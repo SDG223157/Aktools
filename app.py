@@ -110,38 +110,39 @@ def get_kline(
 
 # ===================== REALTIME =====================
 
-# Build code→Chinese name map from fees_info (same source as /api/varieties)
-# Variety code → exact Chinese name that futures_zh_realtime expects
-_CODE_TO_CN = {
-    # SHFE
-    "cu": "沪铜", "al": "沪铝", "zn": "沪锌", "pb": "沪铅", "ni": "沪镍", "sn": "沪锡",
-    "au": "黄金", "ag": "白银", "rb": "螺纹钢", "wr": "线材", "hc": "热轧卷板",
-    "ss": "不锈钢", "fu": "燃油", "bu": "沥青", "ru": "橡胶", "sp": "纸浆",
-    "ao": "氧化铝", "br": "丁二烯橡胶", "ad": "铝合金", "op": "胶版纸",
-    # INE
-    "sc": "原油", "lu": "低硫燃料油", "nr": "20号胶", "bc": "国际铜", "ec": "集运指数(欧线)期货",
-    # DCE
-    "a": "豆一", "b": "豆二", "m": "豆粕", "y": "豆油", "p": "棕榈油",
-    "c": "玉米", "cs": "玉米淀粉", "jd": "鸡蛋", "lh": "生猪",
-    "l": "聚乙烯", "pp": "聚丙烯", "v": "聚氯乙烯", "eg": "乙二醇", "eb": "苯乙烯",
-    "pg": "液化石油气", "i": "铁矿石", "j": "焦炭", "jm": "焦煤",
-    "rr": "粳米", "fb": "纤维板", "bb": "胶合板", "lg": "原木", "bz": "纯苯",
-    # CZCE
-    "cf": "棉花", "sr": "白糖", "ta": "PTA", "oi": "菜籽油", "rm": "菜粕",
-    "ma": "甲醇", "fg": "玻璃", "sa": "纯碱", "ur": "尿素", "ap": "苹果",
-    "sf": "硅铁", "sm": "锰硅", "zc": "动力煤", "cy": "棉纱", "px": "对二甲苯",
-    "wh": "强麦", "pm": "普麦", "ri": "早籼稻", "jr": "粳稻", "lr": "晚籼稻",
-    "rs": "菜籽", "cj": "红枣", "pk": "花生", "pf": "短纤", "sh": "烧碱", "pl": "丙烯", "pr": "瓶片",
-    # CFFEX
-    "if": "沪深300指数", "ic": "中证500指数", "ih": "上证50指数", "im": "中证1000指数",
-    "t": "十年国债", "tf": "五年国债", "tl": "三十年国债", "ts": "二年国债",
-    # GFEX
-    "lc": "碳酸锂", "si": "工业硅", "ps": "多晶硅", "pd": "钯", "pt": "铂",
-}
+# Variety code → exact name from futures_symbol_mark() (the ONLY names futures_zh_realtime accepts)
+_CODE_TO_CN = {}
+
+def _init_code_map():
+    """Build code→name map by probing futures_zh_realtime with each symbol_mark name."""
+    global _CODE_TO_CN
+    if _CODE_TO_CN:
+        return
+    import re
+    try:
+        df = ak.futures_symbol_mark()
+        for _, r in df.iterrows():
+            cn = r["symbol"]
+            try:
+                rt = ak.futures_zh_realtime(symbol=cn)
+                if rt.empty:
+                    continue
+                sym = str(rt.iloc[0].get("symbol", ""))
+                m = re.match(r'^([A-Za-z]+)', sym)
+                if m:
+                    _CODE_TO_CN[m.group(1).lower()] = cn
+            except:
+                continue
+        print(f"✅ Realtime map built: {len(_CODE_TO_CN)} varieties")
+    except Exception as e:
+        print(f"⚠️ Realtime map init failed: {e}")
+        # Minimal fallback
+        _CODE_TO_CN.update({"cu": "沪铜", "au": "黄金", "ag": "白银", "rb": "螺纹钢", "i": "铁矿石"})
 
 @app.get("/api/realtime")
 def get_realtime(code: str = Query(..., description="Variety code or Chinese name, e.g. cu, 沪铜")):
     """Return real-time quotes for all contracts of a variety."""
+    _init_code_map()
 
     # Resolve to Chinese name for futures_zh_realtime
     cn_name = code
