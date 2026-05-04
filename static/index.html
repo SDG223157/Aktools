@@ -601,6 +601,8 @@ document.addEventListener("DOMContentLoaded", () => {
   initChart();
   initDrawCanvas();
   loadVarieties();
+  // Open Live Quotes panel by default
+  setTimeout(() => { toggleRealtimePanel(); }, 2000);
 });
 
 // ===================== CHART =====================
