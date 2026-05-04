@@ -1228,19 +1228,20 @@ document.querySelectorAll(".period-btn").forEach(btn => {
 });
 
 // ===================== ANALYZE =====================
-async function analyzeCurrentVariety(mode = 'analysis', event) {
+async function analyzeCurrentVariety(mode = 'analysis', evt) {
   const code = document.getElementById("variety-select").value;
   if (!code) { alert("Please select a variety first."); return; }
   const upper = code.toUpperCase();
-  const btn = event ? event.target : document.getElementById("analyze-btn");
+  const btn = evt ? evt.target : document.getElementById("analyze-btn");
   const origText = btn.textContent;
   const origBg = btn.style.background;
 
-  btn.textContent = isStrategy ? "Generating..." : "Analyzing...";
+  const modeLabels = {analysis:"Analysis",strategy:"Strategy",table:"Table",intraday:"Intraday",swing:"Swing",orders:"Orders",risk:"Risk",checklist:"Checklist"};
+  const label = modeLabels[mode] || mode;
+
+  btn.textContent = "Loading...";
   btn.style.background = "#555";
   btn.disabled = true;
-
-  const label = isStrategy ? "Trading Strategy" : "Analysis";
   document.getElementById("analysis-content").innerHTML = `
     <div style="text-align:center;padding:60px 0;">
       <div style="width:36px;height:36px;border:3px solid #2a2a3a;border-top-color:#ffd700;border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto;"></div>
