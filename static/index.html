@@ -425,7 +425,7 @@
   </div>
   <div class="selector-group">
     <label>To</label>
-    <input type="date" id="end-date" value="2026-12-31">
+    <input type="date" id="end-date">
   </div>
   <div class="period-group">
     <button class="period-btn" data-period="30">30m</button>
@@ -596,6 +596,8 @@ let drawCanvas, drawCtx;
 
 // ===================== INIT =====================
 document.addEventListener("DOMContentLoaded", () => {
+  // Set end date to today
+  document.getElementById("end-date").value = new Date().toISOString().slice(0, 10);
   initChart();
   initDrawCanvas();
   loadVarieties();
