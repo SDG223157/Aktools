@@ -446,9 +446,11 @@
 </div>
 
 <!-- Info Bar -->
-<div class="info-bar" id="info-bar">
-  <span class="symbol-name" id="info-symbol">Select a variety to begin</span>
-  <button onclick="toggleRealtimePanel()" style="margin-left:auto;background:#1a1a28;color:#888;border:1px solid #2a2a3a;border-radius:4px;padding:2px 8px;font-size:11px;cursor:pointer;">Live Quotes</button>
+<div style="display:flex;align-items:center;background:#0e0e16;border-bottom:1px solid #1e1e2e;">
+  <div class="info-bar" id="info-bar" style="flex:1;border-bottom:none;">
+    <span class="symbol-name" id="info-symbol">Select a variety to begin</span>
+  </div>
+  <button id="rt-toggle-btn" onclick="toggleRealtimePanel()" style="flex-shrink:0;margin-right:12px;background:#d97706;color:#fff;border:none;border-radius:4px;padding:4px 12px;font-size:12px;font-weight:600;cursor:pointer;">Live</button>
 </div>
 
 <!-- Realtime Quotes Panel -->
@@ -1208,8 +1210,7 @@ function onCrosshairMove(param) {
     <span class="stat">L<span>${d.low.toFixed(2)}</span></span>
     <span class="stat">C<span class="${cls}">${d.close.toFixed(2)}</span></span>
     <span class="stat ${cls}">${pct > 0 ? '+' : ''}${pct}%</span>
-    <span class="stat">Vol<span>${formatVol(param.seriesData.get(volumeSeries)?.value)}</span></span>
-    <button onclick="toggleRealtimePanel()" style="margin-left:auto;background:#1a1a28;color:#888;border:1px solid #2a2a3a;border-radius:4px;padding:2px 8px;font-size:11px;cursor:pointer;">Live</button>`;
+    <span class="stat">Vol<span>${formatVol(param.seriesData.get(volumeSeries)?.value)}</span></span>`;
   maLines.forEach((ma, i) => {
     const el = document.getElementById("ma" + i + "-val");
     if (!ma.enabled) { el.textContent = "MA" + ma.period; return; }
@@ -1229,8 +1230,7 @@ function updateInfoBar(d, symbol, name) {
     <span class="stat">C<span class="${cls}">${d.close.toFixed(2)}</span></span>
     <span class="stat ${cls}">${pct > 0 ? '+' : ''}${pct}%</span>
     <span class="stat">Vol<span>${formatVol(d.volume)}</span></span>
-    <span class="stat">Bars<span>${rawData.length}</span></span>
-    <button onclick="toggleRealtimePanel()" style="margin-left:auto;background:#1a1a28;color:#888;border:1px solid #2a2a3a;border-radius:4px;padding:2px 8px;font-size:11px;cursor:pointer;">Live</button>`;
+    <span class="stat">Bars<span>${rawData.length}</span></span>`;
 }
 
 function formatVol(v) {
