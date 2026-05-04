@@ -376,10 +376,13 @@
     <input type="date" id="end-date" value="2026-12-31">
   </div>
   <div class="period-group">
+    <button class="period-btn" data-period="30">30m</button>
+    <button class="period-btn" data-period="60">1H</button>
     <button class="period-btn active" data-period="daily">D</button>
     <button class="period-btn" data-period="weekly">W</button>
     <button class="period-btn" data-period="monthly">M</button>
   </div>
+  <button id="analyze-btn" onclick="analyzeCurrentVariety()" style="background:#d97706;color:#fff;border:none;border-radius:4px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.12s;white-space:nowrap;" onmouseover="this.style.background='#b45309'" onmouseout="this.style.background='#d97706'">Analyze</button>
   <div class="credits">Powered by AKShare</div>
 </div>
 
@@ -438,9 +441,10 @@
     <canvas id="draw-canvas"></canvas>
     <div class="legend" id="legend">
       <div class="ma-item" data-idx="0" onclick="toggleMA(0)"><span class="ma-dot" style="background:#2196F3"></span><span class="ma-label" id="ma0-val">MA5</span></div>
-      <div class="ma-item" data-idx="1" onclick="toggleMA(1)"><span class="ma-dot" style="background:#FF9800"></span><span class="ma-label" id="ma1-val">MA10</span></div>
-      <div class="ma-item" data-idx="2" onclick="toggleMA(2)"><span class="ma-dot" style="background:#4CAF50"></span><span class="ma-label" id="ma2-val">MA20</span></div>
-      <div class="ma-item" data-idx="3" onclick="toggleMA(3)"><span class="ma-dot" style="background:#E91E63"></span><span class="ma-label" id="ma3-val">MA60</span></div>
+      <div class="ma-item" data-idx="1" onclick="toggleMA(1)"><span class="ma-dot" style="background:#FF9800"></span><span class="ma-label" id="ma1-val">MA20</span></div>
+      <div class="ma-item" data-idx="2" onclick="toggleMA(2)"><span class="ma-dot" style="background:#4CAF50"></span><span class="ma-label" id="ma2-val">MA60</span></div>
+      <div class="ma-item" data-idx="3" onclick="toggleMA(3)"><span class="ma-dot" style="background:#E91E63"></span><span class="ma-label" id="ma3-val">MA120</span></div>
+      <div class="ma-item" data-idx="4" onclick="toggleMA(4)"><span class="ma-dot" style="background:#9C27B0"></span><span class="ma-label" id="ma4-val">MA250</span></div>
       <div class="ma-item" style="color:#666; font-size:14px;" onclick="toggleMAConfig(event)">&#9881;</div>
     </div>
     <div class="ma-config" id="ma-config">
@@ -456,22 +460,29 @@
         <input type="checkbox" class="ma-toggle" id="ma-on-1" checked>
         <span class="ma-color-dot" id="ma-cdot-1" style="background:#FF9800"></span>
         <span class="ma-config-label">MA</span>
-        <input type="number" class="ma-period-input" id="ma-period-1" value="10" min="1" max="500">
+        <input type="number" class="ma-period-input" id="ma-period-1" value="20" min="1" max="500">
         <input type="color" class="ma-color-input" id="ma-color-1" value="#FF9800">
       </div>
       <div class="ma-config-row">
         <input type="checkbox" class="ma-toggle" id="ma-on-2" checked>
         <span class="ma-color-dot" id="ma-cdot-2" style="background:#4CAF50"></span>
         <span class="ma-config-label">MA</span>
-        <input type="number" class="ma-period-input" id="ma-period-2" value="20" min="1" max="500">
+        <input type="number" class="ma-period-input" id="ma-period-2" value="60" min="1" max="500">
         <input type="color" class="ma-color-input" id="ma-color-2" value="#4CAF50">
       </div>
       <div class="ma-config-row">
         <input type="checkbox" class="ma-toggle" id="ma-on-3" checked>
         <span class="ma-color-dot" id="ma-cdot-3" style="background:#E91E63"></span>
         <span class="ma-config-label">MA</span>
-        <input type="number" class="ma-period-input" id="ma-period-3" value="60" min="1" max="500">
+        <input type="number" class="ma-period-input" id="ma-period-3" value="120" min="1" max="500">
         <input type="color" class="ma-color-input" id="ma-color-3" value="#E91E63">
+      </div>
+      <div class="ma-config-row">
+        <input type="checkbox" class="ma-toggle" id="ma-on-4" checked>
+        <span class="ma-color-dot" id="ma-cdot-4" style="background:#9C27B0"></span>
+        <span class="ma-config-label">MA</span>
+        <input type="number" class="ma-period-input" id="ma-period-4" value="250" min="1" max="500">
+        <input type="color" class="ma-color-input" id="ma-color-4" value="#9C27B0">
       </div>
     </div>
     <div class="loading" id="loading">
@@ -492,10 +503,11 @@ let volumeSeries = null;
 let sugIndex = -1;
 
 let maLines = [
-  { period: 5,  color: "#2196F3", enabled: true, series: null },
-  { period: 10, color: "#FF9800", enabled: true, series: null },
-  { period: 20, color: "#4CAF50", enabled: true, series: null },
-  { period: 60, color: "#E91E63", enabled: true, series: null },
+  { period: 5,   color: "#2196F3", enabled: true, series: null },
+  { period: 20,  color: "#FF9800", enabled: true, series: null },
+  { period: 60,  color: "#4CAF50", enabled: true, series: null },
+  { period: 120, color: "#E91E63", enabled: true, series: null },
+  { period: 250, color: "#9C27B0", enabled: true, series: null },
 ];
 
 // Period state
@@ -1050,12 +1062,15 @@ async function loadChart() {
   const startDate = document.getElementById("start-date").value.replace(/-/g, "");
   const endDate = document.getElementById("end-date").value.replace(/-/g, "");
   const symbol = code.toUpperCase() + "0";
+  const isIntraday = currentPeriod === "30" || currentPeriod === "60";
   const loading = document.getElementById("loading");
   loading.classList.remove("hidden");
   try {
     const res = await fetch(`/api/kline?symbol=${symbol}&start_date=${startDate}&end_date=${endDate}&period=${currentPeriod}`);
     rawData = await res.json();
     if (!rawData.length) { alert("No data returned for " + symbol); return; }
+    // Configure timeScale for intraday vs daily
+    chart.timeScale().applyOptions({ timeVisible: isIntraday, secondsVisible: false });
     candleSeries.setData(rawData);
     volumeSeries.setData(rawData.map(d => ({ time: d.time, value: d.volume, color: d.close >= d.open ? "#ef535066" : "#26a69a66" })));
     updateAllMA();
@@ -1163,6 +1178,27 @@ document.querySelectorAll(".period-btn").forEach(btn => {
     loadChart();
   });
 });
+
+// ===================== ANALYZE =====================
+function analyzeCurrentVariety() {
+  const code = document.getElementById("variety-select").value;
+  if (!code) { alert("Please select a variety first."); return; }
+  const upper = code.toUpperCase();
+  const cmd = `/futures-price-structure-analysis ${upper}`;
+
+  // Copy command to clipboard
+  navigator.clipboard.writeText(cmd).then(() => {
+    const btn = document.getElementById("analyze-btn");
+    const orig = btn.textContent;
+    btn.textContent = "Copied!";
+    btn.style.background = "#16a34a";
+    setTimeout(() => { btn.textContent = orig; btn.style.background = "#d97706"; }, 2000);
+  });
+
+  // Show instruction
+  const msg = `Analysis command copied to clipboard:\n\n${cmd}\n\nPaste this into Claude Code to run the 13-step futures price structure analysis for ${upper}.`;
+  alert(msg);
+}
 </script>
 </body>
 </html>
