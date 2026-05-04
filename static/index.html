@@ -1159,11 +1159,84 @@ async function loadChart() {
     drawings = [];
     drawState = null;
     renderDrawings();
+    // Start live candle updates
+    startLiveCandle(symbol);
   } catch (e) {
     alert("Error loading data: " + e.message);
   } finally {
     loading.classList.add("hidden");
   }
+}
+
+// ===================== LIVE CANDLE =====================
+let liveInterval = null;
+let liveSymbol = null;
+
+function startLiveCandle(symbol) {
+  // Stop previous
+  if (liveInterval) { clearInterval(liveInterval); liveInterval = null; }
+  liveSymbol = symbol;
+
+  liveInterval = setInterval(async () => {
+    if (!liveSymbol || !rawData.length) return;
+    try {
+      const res = await fetch(`/api/tick?symbol=${liveSymbol}`);
+      const tick = await res.json();
+      if (!tick.price || tick.error) return;
+
+      const lastBar = rawData[rawData.length - 1];
+      const now = new Date();
+
+      if (currentPeriod === "daily") {
+        // Update today's candle
+        const todayStr = now.toISOString().slice(0, 10);
+        if (lastBar.time === todayStr) {
+          // Update existing bar
+          lastBar.high = Math.max(lastBar.high, tick.price);
+          lastBar.low = Math.min(lastBar.low, tick.price);
+          lastBar.close = tick.price;
+          lastBar.volume = tick.volume || lastBar.volume;
+        } else {
+          // New day — append new bar
+          rawData.push({
+            time: todayStr,
+            open: tick.price,
+            high: tick.price,
+            low: tick.price,
+            close: tick.price,
+            volume: tick.volume || 0,
+          });
+        }
+      } else if (currentPeriod === "30" || currentPeriod === "60") {
+        // For intraday: update the last bar's close/high/low
+        lastBar.high = Math.max(lastBar.high, tick.price);
+        lastBar.low = Math.min(lastBar.low, tick.price);
+        lastBar.close = tick.price;
+        lastBar.volume = tick.volume || lastBar.volume;
+      } else {
+        // Weekly/monthly — just update last bar
+        lastBar.high = Math.max(lastBar.high, tick.price);
+        lastBar.low = Math.min(lastBar.low, tick.price);
+        lastBar.close = tick.price;
+      }
+
+      // Update the chart series (lightweight-charts supports .update() for last bar)
+      const bar = rawData[rawData.length - 1];
+      candleSeries.update(bar);
+      volumeSeries.update({
+        time: bar.time,
+        value: bar.volume,
+        color: bar.close >= bar.open ? "#ef535066" : "#26a69a66",
+      });
+
+      // Update info bar
+      const varSelect = document.getElementById("variety-select");
+      updateInfoBar(bar, liveSymbol, varSelect.options[varSelect.selectedIndex]?.textContent || "");
+
+    } catch (e) {
+      // Silently fail — next tick will retry
+    }
+  }, 5000); // Poll every 5 seconds
 }
 
 // ===================== MOVING AVERAGES =====================

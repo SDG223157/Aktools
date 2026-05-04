@@ -170,6 +170,39 @@ def get_realtime(code: str = Query(..., description="Variety Chinese name or cod
         return {"error": str(e)}
 
 
+@app.get("/api/tick")
+def get_tick(symbol: str = Query(..., description="e.g. AU0, CU0")):
+    """Return latest tick (price, volume, time) for a main contract."""
+    try:
+        # Get the Chinese name from symbol_mark
+        code = symbol.replace("0", "").upper()
+        df_map = ak.futures_symbol_mark()
+        cn_name = None
+        for _, r in df_map.iterrows():
+            if code.lower() in r["mark"]:
+                cn_name = r["symbol"]; break
+        if not cn_name:
+            return {"error": f"Unknown symbol {symbol}"}
+
+        df = ak.futures_zh_realtime(symbol=cn_name)
+        # Find the continuous contract (ends with 0)
+        row = df[df["symbol"] == symbol]
+        if row.empty:
+            row = df.head(1)  # fallback to first
+        r = row.iloc[0]
+        return {
+            "symbol": r.get("symbol", symbol),
+            "price": float(r["trade"]) if pd.notna(r.get("trade")) else None,
+            "open": float(r["open"]) if pd.notna(r.get("open")) else None,
+            "high": float(r["high"]) if pd.notna(r.get("high")) else None,
+            "low": float(r["low"]) if pd.notna(r.get("low")) else None,
+            "volume": int(r["volume"]) if pd.notna(r.get("volume")) else 0,
+            "time": pd.Timestamp.now().isoformat(),
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
 # ===================== ANALYZE =====================
 
 def gather_futures_data(variety_code: str) -> dict:
