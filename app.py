@@ -347,9 +347,16 @@ def build_orders_prompt(vc, data):
     return f"基于以下数据生成{vc}的盘中挂单策略清单（中文Markdown）：\n\n{_data_block(vc,data)}\n\n输出：\n## 挂单总表\n| 编号 | 方向 | 类型 | 挂单价 | 止损价 | 目标价 | 盈亏比 | 备注 |\n（突破买入/回调买入/二次回调/反弹做空/破位做空/跨期正套，至少6笔）\n\n## 每笔挂单详解（逻辑/触发后操作/取消条件）\n## 挂单管理规则（开盘调整/盘中撤回/收盘处理）\n## 仓位汇总\n| 情景 | 持仓方向 | 总仓位 | 总风险 |\n\n所有价位精确到整数。"
 
 
+def build_risk_prompt(vc, data):
+    return f"基于以下数据生成{vc}的专项风险管理报告（中文Markdown）：\n\n{_data_block(vc,data)}\n\n输出：\n## 一、风险全景评估\n### 1.1 价格风险（百分位、最大回撤估算、单日最大亏损按1/5/10手）\n### 1.2 流动性风险（主力vs远月、日盘vs夜盘）\n### 1.3 期限结构风险（展期、逼仓、基差收敛）\n### 1.4 相关性风险（产业链、宏观因子）\n\n## 二、仓位管理体系\n### 2.1 单品种仓位上限（保守/标准/激进，按100万/500万/1000万账户计算）\n### 2.2 波动率调整公式：仓位 = 风险预算 / (ATR × 合约乘数)\n### 2.3 加仓规则（浮盈加仓条件、金字塔法则）\n\n## 三、止损体系\n### 技术止损（关键价位）\n### 时间止损（N天未盈利）\n### 资金止损（单笔/日/周/月限额）\n\n## 四、极端风险预案（涨跌停封板、流动性枯竭、政策突变）\n\n## 五、风险指标监控看板\n| 指标 | 当前值 | 安全区 | 警戒区 | 危险区 | 状态 |\n（8-10个指标）\n\n## 六、风险检查清单（盘前/盘中/盘后）\n| 序号 | 检查项 | 标准 | 操作 |\n\n所有金额精确到整数。"
+
+def build_checklist_prompt(vc, data):
+    return f"基于以下数据生成{vc}的今日操盘跟踪清单（中文Markdown）：\n\n{_data_block(vc,data)}\n\n输出：\n## 一、关键价位速查\n| 类型 | 价位 | 说明 | 触发后操作 |\n（阻力4个+支撑4个+枢轴点）\n\n## 二、今日方向判断（偏多/偏空/震荡+3个理由+置信度）\n\n## 三、今日交易计划\n| 策略 | 方向 | 入场条件 | 入场价 | 止损价 | 目标价 | 仓位 | 执行状态 |\n（3-5个策略）\n\n## 四、监控指标\n| 指标 | 昨日值 | 多头信号 | 空头信号 |\n\n## 五、今日事件提醒\n| 时间 | 事件 | 影响 | 应对 |\n\n## 六、盘前检查\n- [ ] 隔夜外盘确认\n- [ ] 今日数据/事件\n- [ ] 持仓状态确认\n- [ ] 最大可承受亏损\n\n## 七、盘中纪律\n- [ ] 不在开盘15分钟追涨杀跌\n- [ ] 止损不犹豫不扩大\n- [ ] 连续2次止损暂停30分钟\n\n## 八、盘后复盘\n| 项目 | 记录 |\n| 今日盈亏 | |\n| 执行纪律 | 好/一般/差 |\n| 明日关注 | |\n\n所有价位精确到整数。适合打印放在交易台旁。"
+
+
 @app.get("/api/analyze")
 async def analyze_futures(code: str = Query(...), mode: str = Query("analysis")):
-    """Call GPT-5.4. mode: analysis/strategy/table/intraday/swing/orders"""
+    """Call GPT-5.4. mode: analysis/strategy/table/intraday/swing/orders/risk/checklist"""
     import httpx
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
@@ -358,7 +365,8 @@ async def analyze_futures(code: str = Query(...), mode: str = Query("analysis"))
     data = gather_futures_data(upper)
     builders = {"analysis": build_futures_prompt, "strategy": build_strategy_prompt,
                 "table": build_table_prompt, "intraday": build_intraday_prompt,
-                "swing": build_swing_prompt, "orders": build_orders_prompt}
+                "swing": build_swing_prompt, "orders": build_orders_prompt,
+                "risk": build_risk_prompt, "checklist": build_checklist_prompt}
     prompt = builders.get(mode, build_futures_prompt)(upper, data)
     async with httpx.AsyncClient(timeout=120) as client:
         try:
