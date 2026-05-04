@@ -601,8 +601,6 @@ document.addEventListener("DOMContentLoaded", () => {
   initChart();
   initDrawCanvas();
   loadVarieties();
-  // Open Live Quotes panel by default
-  setTimeout(() => { toggleRealtimePanel(); }, 2000);
 });
 
 // ===================== CHART =====================
@@ -1161,6 +1159,12 @@ async function loadChart() {
     renderDrawings();
     // Start live candle updates
     startLiveCandle(symbol);
+    // Open Live Quotes panel if not already open
+    if (!document.getElementById("rt-panel").classList.contains("open")) {
+      toggleRealtimePanel();
+    } else {
+      loadRealtimeQuotes();
+    }
   } catch (e) {
     alert("Error loading data: " + e.message);
   } finally {
@@ -1404,7 +1408,7 @@ async function loadRealtimeQuotes() {
   try {
     const res = await fetch(`/api/realtime?code=${encodeURIComponent(code)}`);
     const data = await res.json();
-    if (data.error || !Array.isArray(data)) return;
+    if (data.error || !Array.isArray(data)) { console.error("Realtime error:", data); return; }
 
     const panel = document.getElementById("rt-panel");
     panel.innerHTML = data.map(r => {
