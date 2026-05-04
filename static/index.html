@@ -212,6 +212,38 @@
   @keyframes spin { to { transform: rotate(360deg); } }
   .hidden { display: none !important; }
 
+  /* Analysis Panel */
+  .analysis-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.8); z-index: 200;
+    display: none; overflow-y: auto;
+  }
+  .analysis-overlay.open { display: block; }
+  .analysis-panel {
+    max-width: 900px; margin: 40px auto; padding: 32px;
+    background: #12121a; border-radius: 12px;
+    border: 1px solid #2a2a3a; color: #e0e0e0;
+    font-size: 14px; line-height: 1.7;
+  }
+  .analysis-panel h1 { font-size: 22px; color: #ffd700; margin: 24px 0 12px; }
+  .analysis-panel h2 { font-size: 18px; color: #ffd700; margin: 20px 0 10px; border-bottom: 1px solid #2a2a3a; padding-bottom: 6px; }
+  .analysis-panel h3 { font-size: 15px; color: #ccc; margin: 16px 0 8px; }
+  .analysis-panel table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px; }
+  .analysis-panel th, .analysis-panel td { padding: 6px 10px; border: 1px solid #2a2a3a; text-align: left; }
+  .analysis-panel th { background: #1a1a28; color: #aaa; font-weight: 600; }
+  .analysis-panel strong { color: #ffd700; }
+  .analysis-panel code { background: #1a1a28; padding: 2px 6px; border-radius: 3px; font-size: 12px; }
+  .analysis-panel ul, .analysis-panel ol { padding-left: 20px; margin: 8px 0; }
+  .analysis-panel li { margin: 4px 0; }
+  .analysis-close {
+    position: sticky; top: 0; text-align: right; padding: 8px 0;
+    background: #12121a; z-index: 10;
+  }
+  .analysis-close button {
+    background: #ef5350; color: #fff; border: none; border-radius: 4px;
+    padding: 6px 16px; font-size: 13px; cursor: pointer;
+  }
+
   /* Legend (MA labels) */
   .legend {
     position: absolute;
@@ -492,6 +524,15 @@
   </div>
 </div>
 
+<!-- Analysis Panel Overlay -->
+<div class="analysis-overlay" id="analysis-overlay" onclick="if(event.target===this)closeAnalysis()">
+  <div class="analysis-panel">
+    <div class="analysis-close"><button onclick="closeAnalysis()">Close</button></div>
+    <div id="analysis-content">Loading analysis...</div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script>
 // ===================== STATE =====================
 let varietiesData = {};
@@ -1180,24 +1221,55 @@ document.querySelectorAll(".period-btn").forEach(btn => {
 });
 
 // ===================== ANALYZE =====================
-function analyzeCurrentVariety() {
+async function analyzeCurrentVariety() {
   const code = document.getElementById("variety-select").value;
   if (!code) { alert("Please select a variety first."); return; }
   const upper = code.toUpperCase();
-  const cmd = `/futures-price-structure-analysis ${upper}`;
+  const btn = document.getElementById("analyze-btn");
 
-  // Copy command to clipboard
-  navigator.clipboard.writeText(cmd).then(() => {
-    const btn = document.getElementById("analyze-btn");
-    const orig = btn.textContent;
-    btn.textContent = "Copied!";
-    btn.style.background = "#16a34a";
-    setTimeout(() => { btn.textContent = orig; btn.style.background = "#d97706"; }, 2000);
-  });
+  // Show loading state
+  btn.textContent = "Analyzing...";
+  btn.style.background = "#555";
+  btn.disabled = true;
 
-  // Show instruction
-  const msg = `Analysis command copied to clipboard:\n\n${cmd}\n\nPaste this into Claude Code to run the 13-step futures price structure analysis for ${upper}.`;
-  alert(msg);
+  // Open overlay with loading message
+  document.getElementById("analysis-content").innerHTML = `
+    <div style="text-align:center;padding:60px 0;">
+      <div style="width:36px;height:36px;border:3px solid #2a2a3a;border-top-color:#ffd700;border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto;"></div>
+      <p style="color:#888;margin-top:16px;">Analyzing ${upper} with GPT-5.4...</p>
+      <p style="color:#555;font-size:12px;margin-top:8px;">Gathering AKShare data + generating report. This may take 30-60 seconds.</p>
+    </div>`;
+  document.getElementById("analysis-overlay").classList.add("open");
+
+  try {
+    const res = await fetch(`/api/analyze?code=${upper}`);
+    const result = await res.json();
+
+    if (result.ok && result.report) {
+      // Render markdown report
+      document.getElementById("analysis-content").innerHTML = marked.parse(result.report);
+    } else {
+      document.getElementById("analysis-content").innerHTML = `
+        <div style="color:#ef5350;text-align:center;padding:40px;">
+          <p style="font-size:16px;font-weight:bold;">Analysis Failed</p>
+          <p style="margin-top:8px;">${result.error || "Unknown error"}</p>
+        </div>`;
+    }
+  } catch (err) {
+    document.getElementById("analysis-content").innerHTML = `
+      <div style="color:#ef5350;text-align:center;padding:40px;">
+        <p style="font-size:16px;font-weight:bold;">Analysis Failed</p>
+        <p style="margin-top:8px;">${err.message || err}</p>
+      </div>`;
+  } finally {
+    btn.textContent = "Analyze";
+    btn.style.background = "#d97706";
+    btn.disabled = false;
+  }
+}
+
+function closeAnalysis() {
+  document.getElementById("analysis-overlay").classList.remove("open");
 }
 </script>
 </body>

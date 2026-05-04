@@ -1,17 +1,25 @@
 """
-Futures K-Line Website
+Futures K-Line Website + Analysis API
 Run: python3 app.py
 Open: http://localhost:8888
 """
 
+import os
+import json
 import akshare as ak
 import pandas as pd
+import numpy as np
 from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 app = FastAPI(title="Futures K-Line")
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+OPENAI_MODEL = "gpt-5.4"
+OPENAI_URL = "https://api.openai.com/v1/chat/completions"
 
 
 @app.get("/api/varieties")
@@ -45,9 +53,24 @@ def get_kline(
     symbol: str = Query(..., description="e.g. AU0, RB0, I0"),
     start_date: str = Query("20240101"),
     end_date: str = Query("20261231"),
-    period: str = Query("daily", description="daily, weekly, monthly"),
+    period: str = Query("daily", description="daily, weekly, monthly, 30, 60"),
 ):
     """Return OHLCV data for a futures main contract."""
+    if period in ("30", "60"):
+        df = ak.futures_zh_minute_sina(symbol=symbol, period=period)
+        records = []
+        for _, row in df.iterrows():
+            dt = pd.to_datetime(row["datetime"])
+            records.append({
+                "time": int(dt.timestamp()),
+                "open": float(row["open"]),
+                "high": float(row["high"]),
+                "low": float(row["low"]),
+                "close": float(row["close"]),
+                "volume": int(row["volume"]),
+            })
+        return records
+
     df = ak.futures_main_sina(symbol=symbol, start_date=start_date, end_date=end_date)
     df["日期"] = pd.to_datetime(df["日期"])
 
@@ -83,6 +106,195 @@ def get_kline(
             "volume": int(row["成交量"]),
         })
     return records
+
+
+# ===================== ANALYZE =====================
+
+def gather_futures_data(variety_code: str) -> dict:
+    """Gather all data needed for the analysis prompt."""
+    data = {}
+    upper = variety_code.upper()
+
+    try:
+        df_fees = ak.futures_fees_info()
+        rows = df_fees[df_fees['品种代码'].str.upper() == upper]
+        if not rows.empty:
+            r = rows.iloc[0]
+            data["contract"] = {
+                "exchange": r["交易所"], "name": r["品种名称"], "code": r["品种代码"],
+                "multiplier": float(r["合约乘数"]), "tick": float(r["最小跳动"]),
+                "margin_rate": float(r["做多保证金率"]),
+            }
+            data["contracts_list"] = [
+                {"code": cr["合约代码"], "price": float(cr["最新价"]) if pd.notna(cr["最新价"]) else None,
+                 "volume": int(cr["成交量"]) if pd.notna(cr["成交量"]) else 0,
+                 "oi": int(cr["持仓量"]) if pd.notna(cr["持仓量"]) else 0}
+                for _, cr in rows.iterrows()
+            ]
+    except Exception as e:
+        data["contract_error"] = str(e)
+
+    try:
+        symbol_map = ak.futures_symbol_mark()
+        cn_name = None
+        for _, r in symbol_map.iterrows():
+            if upper.lower() in r["mark"]:
+                cn_name = r["symbol"]; break
+        if cn_name:
+            df_rt = ak.futures_zh_realtime(symbol=cn_name)
+            contracts = df_rt[~df_rt['symbol'].str.endswith('0')]
+            data["term_structure"] = sorted([
+                {"symbol": r["symbol"], "price": float(r["trade"]) if pd.notna(r["trade"]) else None,
+                 "volume": int(r["volume"]) if pd.notna(r["volume"]) else 0,
+                 "oi": int(r["position"]) if pd.notna(r["position"]) else 0}
+                for _, r in contracts.iterrows()
+            ], key=lambda x: x["symbol"])
+    except Exception as e:
+        data["term_structure_error"] = str(e)
+
+    try:
+        from datetime import datetime, timedelta
+        for d in range(5):
+            dt = (datetime.now() - timedelta(days=d)).strftime("%Y%m%d")
+            try:
+                df_b = ak.futures_spot_price(date=dt)
+                basis = df_b[df_b['symbol'].str.upper() == upper]
+                if not basis.empty:
+                    r = basis.iloc[0]
+                    data["basis"] = {col: (float(r[col]) if isinstance(r[col], (int, float, np.floating)) else str(r[col])) for col in basis.columns}
+                    break
+            except:
+                continue
+    except Exception as e:
+        data["basis_error"] = str(e)
+
+    try:
+        df_hist = ak.futures_main_sina(symbol=f"{upper}0", start_date="20250101", end_date="20261231")
+        df_hist['close'] = pd.to_numeric(df_hist['收盘价'], errors='coerce')
+        df_hist['high'] = pd.to_numeric(df_hist['最高价'], errors='coerce')
+        close = df_hist['close'].dropna()
+        latest = close.iloc[-1]
+        data["history"] = {
+            "latest_price": float(latest), "latest_date": str(df_hist['日期'].iloc[-1]),
+            "min": float(close.min()), "max": float(close.max()), "mean": float(close.mean()),
+            "percentile": float((close < latest).mean() * 100), "bars": len(close),
+        }
+        perf = {}
+        for days, label in [(5, "1w"), (20, "1m"), (60, "3m"), (120, "6m")]:
+            if len(close) > days:
+                perf[label] = float((latest / close.iloc[-days-1] - 1) * 100)
+        data["performance"] = perf
+        mas = {}
+        for w in [5, 20, 60, 120, 250]:
+            ma = close.rolling(w).mean()
+            if pd.notna(ma.iloc[-1]):
+                mas[f"MA{w}"] = float(ma.iloc[-1])
+        data["moving_averages"] = mas
+        delta = close.diff()
+        gain = delta.where(delta > 0, 0).rolling(14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+        rsi = 100 - (100 / (1 + gain / loss))
+        data["rsi14"] = float(rsi.iloc[-1]) if pd.notna(rsi.iloc[-1]) else None
+        data["ath"] = float(df_hist['high'].max())
+        data["ath_distance"] = float((latest - data["ath"]) / data["ath"] * 100)
+        data["recent_bars"] = [
+            {"date": str(r["日期"]), "O": r["开盘价"], "H": r["最高价"], "L": r["最低价"], "C": r["收盘价"], "V": r["成交量"]}
+            for _, r in df_hist.tail(10).iterrows()
+        ]
+    except Exception as e:
+        data["history_error"] = str(e)
+
+    try:
+        inv_map = {"CU": "沪铜", "AL": "沪铝", "ZN": "沪锌", "AU": "沪金", "AG": "沪银",
+                    "RB": "螺纹钢", "I": "铁矿石", "J": "焦炭", "M": "豆粕", "NI": "镍"}
+        inv_name = inv_map.get(upper)
+        if inv_name:
+            df_inv = ak.futures_inventory_em(symbol=inv_name)
+            recent = df_inv.tail(20)
+            s, e = float(recent['库存'].iloc[0]), float(recent['库存'].iloc[-1])
+            data["inventory"] = {"current": e, "20d_ago": s, "change": e - s,
+                                  "change_pct": (e - s) / s * 100 if s else 0, "trend": "累库" if e > s else "去库"}
+    except Exception as e:
+        data["inventory_error"] = str(e)
+
+    return data
+
+
+def build_futures_prompt(variety_code: str, data: dict) -> str:
+    contract = data.get("contract", {})
+    name = contract.get("name", variety_code)
+    prompt = f"""你是一位资深期货分析师，使用"期限结构 x 价格形态 x 供需 x 事件驱动"的多维分析框架。
+
+请对以下品种进行完整的价格结构分析报告：
+
+品种: {variety_code.upper()} ({name})
+交易所: {contract.get('exchange', 'N/A')}
+合约乘数: {contract.get('multiplier', 'N/A')}
+保证金率: {contract.get('margin_rate', 0) * 100:.1f}%
+"""
+    if "term_structure" in data:
+        prompt += "\n=== 期限结构 ===\n"
+        for t in data["term_structure"]:
+            prompt += f"  {t['symbol']}: 价格={t['price']} 成交量={t['volume']} 持仓量={t['oi']}\n"
+    if "basis" in data:
+        prompt += f"\n=== 基差数据 ===\n{json.dumps(data['basis'], ensure_ascii=False, indent=2)}\n"
+    if "history" in data:
+        h = data["history"]
+        prompt += f"\n=== 历史价格 ===\n最新价: {h['latest_price']}  区间: {h['min']}-{h['max']}  百分位: {h['percentile']:.1f}%\nATH: {data.get('ath')}  距ATH: {data.get('ath_distance', 0):.1f}%\n"
+    if "performance" in data:
+        prompt += "\n近期表现: " + " | ".join(f"{k}:{v:+.2f}%" for k, v in data["performance"].items()) + "\n"
+    if "moving_averages" in data:
+        prompt += "均线: " + " | ".join(f"{k}:{v:.0f}" for k, v in data["moving_averages"].items()) + "\n"
+    if data.get("rsi14"):
+        prompt += f"RSI(14): {data['rsi14']:.1f}\n"
+    if "inventory" in data:
+        inv = data["inventory"]
+        prompt += f"\n=== 库存 ===\n当前: {inv['current']:.0f}  20日前: {inv['20d_ago']:.0f}  变化: {inv['change']:+.0f} ({inv['change_pct']:+.1f}%)  趋势: {inv['trend']}\n"
+    if "contracts_list" in data:
+        prompt += "\n=== 各合约 ===\n"
+        for c in data["contracts_list"]:
+            prompt += f"  {c['code']}: 价格={c['price']} 成交量={c['volume']} 持仓量={c['oi']}\n"
+    if "recent_bars" in data:
+        prompt += "\n=== 近10日 ===\n"
+        for b in data["recent_bars"]:
+            prompt += f"  {b['date']} O:{b['O']} H:{b['H']} L:{b['L']} C:{b['C']} V:{b['V']}\n"
+    prompt += """
+=== 输出要求 ===
+生成完整中文价格结构分析报告（Markdown），包含：
+## 1. 合约要素
+## 2. 期限结构概览（正向/反向/混合，曲线形态）
+## 3. 基差状态（基差=现货-期货）
+## 4. 关键价差（跨月价差，年化率，与持仓成本对比）
+## 5. 供需分析（库存、供给、需求、成本、平衡判断）
+## 6. 价格形态分析（趋势、摆动结构、支撑阻力、动量、量价）
+## 7. 事件驱动分析
+## 8. EXTREME/CLOCK/GEO/TRENDWISE/ATH评估
+## 9. 结构综合研判（多维评估表+关键含义+信号关注）
+"""
+    return prompt
+
+
+@app.get("/api/analyze")
+async def analyze_futures(code: str = Query(...)):
+    """Call GPT-5.4 to analyze a futures variety."""
+    import httpx
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        return {"error": "OPENAI_API_KEY not set. Export it: export OPENAI_API_KEY=sk-..."}
+    upper = code.strip().upper()
+    data = gather_futures_data(upper)
+    prompt = build_futures_prompt(upper, data)
+    async with httpx.AsyncClient(timeout=120) as client:
+        try:
+            resp = await client.post(OPENAI_URL,
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={"model": OPENAI_MODEL, "messages": [{"role": "user", "content": prompt}],
+                      "max_completion_tokens": 8000, "temperature": 0.2})
+            resp.raise_for_status()
+            report = resp.json()["choices"][0]["message"]["content"]
+            return {"ok": True, "code": upper, "report": report}
+        except Exception as e:
+            return {"error": str(e)}
 
 
 @app.get("/", response_class=HTMLResponse)
