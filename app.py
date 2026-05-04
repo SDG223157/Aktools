@@ -274,16 +274,60 @@ def build_futures_prompt(variety_code: str, data: dict) -> str:
     return prompt
 
 
+def build_strategy_prompt(variety_code: str, data: dict) -> str:
+    contract = data.get("contract", {})
+    name = contract.get("name", variety_code)
+    h = data.get("history", {})
+    inv = data.get("inventory", {})
+    basis = data.get("basis", {})
+    mas = data.get("moving_averages", {})
+    perf = data.get("performance", {})
+    prompt = f"""基于以下{variety_code.upper()}（{name}）的价格结构数据，生成完整的交易策略报告：
+
+核心数据：
+- 当前价格：{h.get('latest_price', 'N/A')}（主力合约）
+- 现货价格：{basis.get('spot_price', 'N/A')}
+- 库存：{inv.get('current', 'N/A')}，20日变化：{inv.get('change_pct', 0):+.1f}%（{inv.get('trend', 'N/A')}）
+- 均线：{' | '.join(f'{k}:{v:.0f}' for k, v in mas.items())}
+- RSI(14): {data.get('rsi14', 'N/A')}
+- ATH: {data.get('ath', 'N/A')}（距ATH: {data.get('ath_distance', 0):.1f}%）
+- 历史百分位: {h.get('percentile', 0):.1f}%
+- 近期表现: {' | '.join(f'{k}:{v:+.2f}%' for k, v in perf.items())}
+"""
+    if "term_structure" in data:
+        prompt += "\n各合约价格：\n"
+        for t in data["term_structure"]:
+            prompt += f"  {t['symbol']}: {t['price']}  持仓量={t['oi']}\n"
+    if "recent_bars" in data:
+        prompt += "\n近10日走势：\n"
+        for b in data["recent_bars"]:
+            prompt += f"  {b['date']} O:{b['O']} H:{b['H']} L:{b['L']} C:{b['C']} V:{b['V']}\n"
+    prompt += """
+请输出完整中文交易策略报告（Markdown），包含：
+## 一、多空情景分析（偏多/偏空/震荡各自概率%、触发条件、目标区）
+## 二、方向性交易策略
+### 策略1：趋势多单（入场/止损/目标位/仓位/盈亏比）
+### 策略2：回调做多（入场/止损/目标位/仓位/盈亏比）
+### 策略3：高位做空短线（入场/止损/目标位/仓位/风险警告）
+## 三、跨期套利策略（合约组合/入场价差/目标/止损/逻辑）
+## 四、风险管理（仓位原则/止损纪律/极端信号）
+## 五、每日跟踪清单（关键价位/指标/信号）
+## 六、策略优先级排序
+
+所有价位精确到整数，盈亏比清晰。"""
+    return prompt
+
+
 @app.get("/api/analyze")
-async def analyze_futures(code: str = Query(...)):
-    """Call GPT-5.4 to analyze a futures variety."""
+async def analyze_futures(code: str = Query(...), mode: str = Query("analysis")):
+    """Call GPT-5.4 to analyze a futures variety. mode: analysis or strategy"""
     import httpx
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
         return {"error": "OPENAI_API_KEY not set. Export it: export OPENAI_API_KEY=sk-..."}
     upper = code.strip().upper()
     data = gather_futures_data(upper)
-    prompt = build_futures_prompt(upper, data)
+    prompt = build_strategy_prompt(upper, data) if mode == "strategy" else build_futures_prompt(upper, data)
     async with httpx.AsyncClient(timeout=120) as client:
         try:
             resp = await client.post(OPENAI_URL,
@@ -292,7 +336,7 @@ async def analyze_futures(code: str = Query(...)):
                       "max_completion_tokens": 8000, "temperature": 0.2})
             resp.raise_for_status()
             report = resp.json()["choices"][0]["message"]["content"]
-            return {"ok": True, "code": upper, "report": report}
+            return {"ok": True, "code": upper, "mode": mode, "report": report}
         except Exception as e:
             return {"error": str(e)}
 

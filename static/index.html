@@ -414,7 +414,8 @@
     <button class="period-btn" data-period="weekly">W</button>
     <button class="period-btn" data-period="monthly">M</button>
   </div>
-  <button id="analyze-btn" onclick="analyzeCurrentVariety()" style="background:#d97706;color:#fff;border:none;border-radius:4px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.12s;white-space:nowrap;" onmouseover="this.style.background='#b45309'" onmouseout="this.style.background='#d97706'">Analyze</button>
+  <button id="analyze-btn" onclick="analyzeCurrentVariety('analysis')" style="background:#d97706;color:#fff;border:none;border-radius:4px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.12s;white-space:nowrap;" onmouseover="this.style.background='#b45309'" onmouseout="this.style.background='#d97706'">Analyze</button>
+  <button id="strategy-btn" onclick="analyzeCurrentVariety('strategy')" style="background:#2563eb;color:#fff;border:none;border-radius:4px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.12s;white-space:nowrap;" onmouseover="this.style.background='#1d4ed8'" onmouseout="this.style.background='#2563eb'">Strategy</button>
   <div class="credits">Powered by AKShare</div>
 </div>
 
@@ -1221,49 +1222,49 @@ document.querySelectorAll(".period-btn").forEach(btn => {
 });
 
 // ===================== ANALYZE =====================
-async function analyzeCurrentVariety() {
+async function analyzeCurrentVariety(mode = 'analysis') {
   const code = document.getElementById("variety-select").value;
   if (!code) { alert("Please select a variety first."); return; }
   const upper = code.toUpperCase();
-  const btn = document.getElementById("analyze-btn");
+  const isStrategy = mode === 'strategy';
+  const btn = document.getElementById(isStrategy ? "strategy-btn" : "analyze-btn");
+  const origText = btn.textContent;
+  const origBg = isStrategy ? "#2563eb" : "#d97706";
 
-  // Show loading state
-  btn.textContent = "Analyzing...";
+  btn.textContent = isStrategy ? "Generating..." : "Analyzing...";
   btn.style.background = "#555";
   btn.disabled = true;
 
-  // Open overlay with loading message
+  const label = isStrategy ? "Trading Strategy" : "Analysis";
   document.getElementById("analysis-content").innerHTML = `
     <div style="text-align:center;padding:60px 0;">
       <div style="width:36px;height:36px;border:3px solid #2a2a3a;border-top-color:#ffd700;border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto;"></div>
-      <p style="color:#888;margin-top:16px;">Analyzing ${upper} with GPT-5.4...</p>
+      <p style="color:#888;margin-top:16px;">Generating ${upper} ${label} with GPT-5.4...</p>
       <p style="color:#555;font-size:12px;margin-top:8px;">Gathering AKShare data + generating report. This may take 30-60 seconds.</p>
     </div>`;
   document.getElementById("analysis-overlay").classList.add("open");
 
   try {
-    const res = await fetch(`/api/analyze?code=${upper}`);
+    const res = await fetch(`/api/analyze?code=${upper}&mode=${mode}`);
     const result = await res.json();
-
     if (result.ok && result.report) {
-      // Render markdown report
       document.getElementById("analysis-content").innerHTML = marked.parse(result.report);
     } else {
       document.getElementById("analysis-content").innerHTML = `
         <div style="color:#ef5350;text-align:center;padding:40px;">
-          <p style="font-size:16px;font-weight:bold;">Analysis Failed</p>
+          <p style="font-size:16px;font-weight:bold;">${label} Failed</p>
           <p style="margin-top:8px;">${result.error || "Unknown error"}</p>
         </div>`;
     }
   } catch (err) {
     document.getElementById("analysis-content").innerHTML = `
       <div style="color:#ef5350;text-align:center;padding:40px;">
-        <p style="font-size:16px;font-weight:bold;">Analysis Failed</p>
+        <p style="font-size:16px;font-weight:bold;">${label} Failed</p>
         <p style="margin-top:8px;">${err.message || err}</p>
       </div>`;
   } finally {
-    btn.textContent = "Analyze";
-    btn.style.background = "#d97706";
+    btn.textContent = origText;
+    btn.style.background = origBg;
     btn.disabled = false;
   }
 }
