@@ -1208,7 +1208,8 @@ function onCrosshairMove(param) {
     <span class="stat">L<span>${d.low.toFixed(2)}</span></span>
     <span class="stat">C<span class="${cls}">${d.close.toFixed(2)}</span></span>
     <span class="stat ${cls}">${pct > 0 ? '+' : ''}${pct}%</span>
-    <span class="stat">Vol<span>${formatVol(param.seriesData.get(volumeSeries)?.value)}</span></span>`;
+    <span class="stat">Vol<span>${formatVol(param.seriesData.get(volumeSeries)?.value)}</span></span>
+    <button onclick="toggleRealtimePanel()" style="margin-left:auto;background:#1a1a28;color:#888;border:1px solid #2a2a3a;border-radius:4px;padding:2px 8px;font-size:11px;cursor:pointer;">Live</button>`;
   maLines.forEach((ma, i) => {
     const el = document.getElementById("ma" + i + "-val");
     if (!ma.enabled) { el.textContent = "MA" + ma.period; return; }
@@ -1228,7 +1229,8 @@ function updateInfoBar(d, symbol, name) {
     <span class="stat">C<span class="${cls}">${d.close.toFixed(2)}</span></span>
     <span class="stat ${cls}">${pct > 0 ? '+' : ''}${pct}%</span>
     <span class="stat">Vol<span>${formatVol(d.volume)}</span></span>
-    <span class="stat">Bars<span>${rawData.length}</span></span>`;
+    <span class="stat">Bars<span>${rawData.length}</span></span>
+    <button onclick="toggleRealtimePanel()" style="margin-left:auto;background:#1a1a28;color:#888;border:1px solid #2a2a3a;border-radius:4px;padding:2px 8px;font-size:11px;cursor:pointer;">Live</button>`;
 }
 
 function formatVol(v) {
