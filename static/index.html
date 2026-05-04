@@ -1400,15 +1400,9 @@ function toggleRealtimePanel() {
 async function loadRealtimeQuotes() {
   const code = document.getElementById("variety-select").value;
   if (!code) return;
-  // Find the Chinese name from the variety select
-  const varSelect = document.getElementById("variety-select");
-  const selectedText = varSelect.options[varSelect.selectedIndex]?.textContent || "";
-  // Extract Chinese name (between "- " and " (")
-  const cnMatch = selectedText.match(/- (.+?)(?:\s*\(|$)/);
-  const cnName = cnMatch ? cnMatch[1].trim() : code;
-
+  // Use the variety code directly — the API resolves it via symbol_mark
   try {
-    const res = await fetch(`/api/realtime?code=${encodeURIComponent(cnName)}`);
+    const res = await fetch(`/api/realtime?code=${encodeURIComponent(code)}`);
     const data = await res.json();
     if (data.error || !Array.isArray(data)) return;
 
