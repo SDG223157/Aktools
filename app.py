@@ -56,7 +56,7 @@ def get_kline(
     period: str = Query("daily", description="daily, weekly, monthly, 30, 60"),
 ):
     """Return OHLCV data for a futures main contract."""
-    if period in ("30", "60"):
+    if period in ("15", "30", "60"):
         df = ak.futures_zh_minute_sina(symbol=symbol, period=period)
         records = []
         for _, row in df.iterrows():
