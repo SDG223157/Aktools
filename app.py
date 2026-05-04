@@ -318,16 +318,48 @@ def build_strategy_prompt(variety_code: str, data: dict) -> str:
     return prompt
 
 
+def _data_block(vc, data):
+    h = data.get("history", {})
+    mas = data.get("moving_averages", {})
+    perf = data.get("performance", {})
+    b = f"品种: {vc}\n当前价格: {h.get('latest_price','N/A')}\nRSI: {data.get('rsi14','N/A')}\n"
+    b += f"ATH: {data.get('ath','N/A')} ({data.get('ath_distance',0):.1f}%)\n百分位: {h.get('percentile',0):.1f}%\n"
+    b += f"均线: {' | '.join(f'{k}:{v:.0f}' for k,v in mas.items())}\n"
+    b += f"近期: {' | '.join(f'{k}:{v:+.2f}%' for k,v in perf.items())}\n"
+    if "term_structure" in data:
+        b += "期限结构:\n"
+        for t in data["term_structure"]: b += f"  {t['symbol']}: {t['price']} OI={t['oi']}\n"
+    if "recent_bars" in data:
+        b += "近10日:\n"
+        for r in data["recent_bars"]: b += f"  {r['date']} O:{r['O']} H:{r['H']} L:{r['L']} C:{r['C']} V:{r['V']}\n"
+    return b
+
+def build_table_prompt(vc, data):
+    return f"基于以下数据生成{vc}的表格版交易计划（Markdown表格）：\n\n{_data_block(vc,data)}\n\n输出：\n## 表格1：多空情景概率\n| 情景 | 概率 | 触发条件 | 目标区 |\n\n## 表格2：方向性策略一览\n| 策略 | 方向 | 入场价 | 止损价 | 目标1 | 目标2 | 风险 | 盈亏比 | 仓位 |\n（突破做多/回调做多/高位做空）\n\n## 表格3：跨期套利\n| 合约组合 | 入场价差 | 目标价差 | 止损价差 | 盈亏比 |\n\n## 表格4：关键价位速查\n| 类型 | 价位 | 说明 |\n\n## 表格5：策略优先级\n| 优先级 | 策略 | 理由 |\n\n所有价位精确到整数。"
+
+def build_intraday_prompt(vc, data):
+    return f"基于以下数据生成{vc}的日内短线交易策略（中文Markdown）：\n\n{_data_block(vc,data)}\n\n输出：\n## 一、日内偏向判断\n## 二、日内关键价位（阻力/支撑/枢轴点）\n## 三、日内策略\n### A：开盘突破跟随（入场/止损/目标/持仓时间）\n### B：区间高抛低吸\n### C：尾盘趋势单\n## 四、日内风控（单笔止损/日最大亏损/不交易时段）\n## 五、执行时间表\n| 时间段 | 操作 | 注意事项 |\n（9:00-10:15/10:30-11:30/13:30-15:00/21:00-23:00）\n\n所有价位精确到整数。"
+
+def build_swing_prompt(vc, data):
+    return f"基于以下数据生成{vc}的Swing波段交易策略（中文Markdown）：\n\n{_data_block(vc,data)}\n\n输出：\n## 一、波段趋势判断（周线/日线/当前位置）\n## 二、波段策略\n### 1：趋势波段多单（分批建仓/止损/目标/持仓周期/盈亏比）\n### 2：反弹波段空单\n### 3：区间波段\n## 三、加仓与减仓规则\n## 四、波段风控\n## 五、交易日历（未来2-4周关键节点）\n## 六、与跨期套利配合\n\n所有价位精确到整数。"
+
+def build_orders_prompt(vc, data):
+    return f"基于以下数据生成{vc}的盘中挂单策略清单（中文Markdown）：\n\n{_data_block(vc,data)}\n\n输出：\n## 挂单总表\n| 编号 | 方向 | 类型 | 挂单价 | 止损价 | 目标价 | 盈亏比 | 备注 |\n（突破买入/回调买入/二次回调/反弹做空/破位做空/跨期正套，至少6笔）\n\n## 每笔挂单详解（逻辑/触发后操作/取消条件）\n## 挂单管理规则（开盘调整/盘中撤回/收盘处理）\n## 仓位汇总\n| 情景 | 持仓方向 | 总仓位 | 总风险 |\n\n所有价位精确到整数。"
+
+
 @app.get("/api/analyze")
 async def analyze_futures(code: str = Query(...), mode: str = Query("analysis")):
-    """Call GPT-5.4 to analyze a futures variety. mode: analysis or strategy"""
+    """Call GPT-5.4. mode: analysis/strategy/table/intraday/swing/orders"""
     import httpx
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
         return {"error": "OPENAI_API_KEY not set. Export it: export OPENAI_API_KEY=sk-..."}
     upper = code.strip().upper()
     data = gather_futures_data(upper)
-    prompt = build_strategy_prompt(upper, data) if mode == "strategy" else build_futures_prompt(upper, data)
+    builders = {"analysis": build_futures_prompt, "strategy": build_strategy_prompt,
+                "table": build_table_prompt, "intraday": build_intraday_prompt,
+                "swing": build_swing_prompt, "orders": build_orders_prompt}
+    prompt = builders.get(mode, build_futures_prompt)(upper, data)
     async with httpx.AsyncClient(timeout=120) as client:
         try:
             resp = await client.post(OPENAI_URL,

@@ -414,8 +414,12 @@
     <button class="period-btn" data-period="weekly">W</button>
     <button class="period-btn" data-period="monthly">M</button>
   </div>
-  <button id="analyze-btn" onclick="analyzeCurrentVariety('analysis')" style="background:#d97706;color:#fff;border:none;border-radius:4px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.12s;white-space:nowrap;" onmouseover="this.style.background='#b45309'" onmouseout="this.style.background='#d97706'">Analyze</button>
-  <button id="strategy-btn" onclick="analyzeCurrentVariety('strategy')" style="background:#2563eb;color:#fff;border:none;border-radius:4px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.12s;white-space:nowrap;" onmouseover="this.style.background='#1d4ed8'" onmouseout="this.style.background='#2563eb'">Strategy</button>
+  <button id="analyze-btn" onclick="analyzeCurrentVariety('analysis',event)" style="background:#d97706;color:#fff;border:none;border-radius:4px;padding:6px 12px;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.12s;white-space:nowrap;">Analyze</button>
+  <button onclick="analyzeCurrentVariety('strategy',event)" style="background:#2563eb;color:#fff;border:none;border-radius:4px;padding:6px 10px;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.12s;white-space:nowrap;">Strategy</button>
+  <button onclick="analyzeCurrentVariety('table',event)" style="background:#7c3aed;color:#fff;border:none;border-radius:4px;padding:6px 10px;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.12s;white-space:nowrap;">Table</button>
+  <button onclick="analyzeCurrentVariety('intraday',event)" style="background:#059669;color:#fff;border:none;border-radius:4px;padding:6px 10px;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.12s;white-space:nowrap;">Intraday</button>
+  <button onclick="analyzeCurrentVariety('swing',event)" style="background:#0891b2;color:#fff;border:none;border-radius:4px;padding:6px 10px;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.12s;white-space:nowrap;">Swing</button>
+  <button onclick="analyzeCurrentVariety('orders',event)" style="background:#be185d;color:#fff;border:none;border-radius:4px;padding:6px 10px;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.12s;white-space:nowrap;">Orders</button>
   <div class="credits">Powered by AKShare</div>
 </div>
 
@@ -1222,14 +1226,13 @@ document.querySelectorAll(".period-btn").forEach(btn => {
 });
 
 // ===================== ANALYZE =====================
-async function analyzeCurrentVariety(mode = 'analysis') {
+async function analyzeCurrentVariety(mode = 'analysis', event) {
   const code = document.getElementById("variety-select").value;
   if (!code) { alert("Please select a variety first."); return; }
   const upper = code.toUpperCase();
-  const isStrategy = mode === 'strategy';
-  const btn = document.getElementById(isStrategy ? "strategy-btn" : "analyze-btn");
+  const btn = event ? event.target : document.getElementById("analyze-btn");
   const origText = btn.textContent;
-  const origBg = isStrategy ? "#2563eb" : "#d97706";
+  const origBg = btn.style.background;
 
   btn.textContent = isStrategy ? "Generating..." : "Analyzing...";
   btn.style.background = "#555";
