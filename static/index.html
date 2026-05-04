@@ -244,6 +244,26 @@
     padding: 6px 16px; font-size: 13px; cursor: pointer;
   }
 
+  /* Realtime Panel */
+  .rt-panel {
+    display: none; background: #0e0e16; border-bottom: 1px solid #1e1e2e;
+    padding: 6px 16px; overflow-x: auto; white-space: nowrap;
+  }
+  .rt-panel.open { display: flex; gap: 8px; align-items: center; }
+  .rt-card {
+    display: inline-flex; flex-direction: column; align-items: center;
+    min-width: 90px; padding: 4px 10px; border-radius: 4px;
+    background: #12121a; border: 1px solid #1e1e2e; font-size: 11px;
+    cursor: default; flex-shrink: 0;
+  }
+  .rt-card .rt-sym { font-weight: 700; color: #ffd700; font-size: 12px; }
+  .rt-card .rt-price { font-size: 14px; font-weight: 700; margin: 2px 0; }
+  .rt-card .rt-chg { font-size: 10px; }
+  .rt-card .rt-vol { font-size: 9px; color: #555; }
+  .rt-up { color: #ef5350; }
+  .rt-down { color: #26a69a; }
+  .rt-flat { color: #888; }
+
   /* Legend (MA labels) */
   .legend {
     position: absolute;
@@ -428,7 +448,11 @@
 <!-- Info Bar -->
 <div class="info-bar" id="info-bar">
   <span class="symbol-name" id="info-symbol">Select a variety to begin</span>
+  <button onclick="toggleRealtimePanel()" style="margin-left:auto;background:#1a1a28;color:#888;border:1px solid #2a2a3a;border-radius:4px;padding:2px 8px;font-size:11px;cursor:pointer;">Live Quotes</button>
 </div>
+
+<!-- Realtime Quotes Panel -->
+<div class="rt-panel" id="rt-panel"></div>
 
 <!-- Main: Toolbar + Chart -->
 <div class="main-area">
@@ -1277,6 +1301,52 @@ async function analyzeCurrentVariety(mode = 'analysis', evt) {
 
 function closeAnalysis() {
   document.getElementById("analysis-overlay").classList.remove("open");
+}
+
+// ===================== REALTIME QUOTES =====================
+let rtInterval = null;
+
+function toggleRealtimePanel() {
+  const panel = document.getElementById("rt-panel");
+  panel.classList.toggle("open");
+  if (panel.classList.contains("open")) {
+    loadRealtimeQuotes();
+    // Auto-refresh every 10 seconds
+    rtInterval = setInterval(loadRealtimeQuotes, 10000);
+  } else {
+    if (rtInterval) { clearInterval(rtInterval); rtInterval = null; }
+  }
+}
+
+async function loadRealtimeQuotes() {
+  const code = document.getElementById("variety-select").value;
+  if (!code) return;
+  // Find the Chinese name from the variety select
+  const varSelect = document.getElementById("variety-select");
+  const selectedText = varSelect.options[varSelect.selectedIndex]?.textContent || "";
+  // Extract Chinese name (between "- " and " (")
+  const cnMatch = selectedText.match(/- (.+?)(?:\s*\(|$)/);
+  const cnName = cnMatch ? cnMatch[1].trim() : code;
+
+  try {
+    const res = await fetch(`/api/realtime?code=${encodeURIComponent(cnName)}`);
+    const data = await res.json();
+    if (data.error || !Array.isArray(data)) return;
+
+    const panel = document.getElementById("rt-panel");
+    panel.innerHTML = data.map(r => {
+      const chgClass = r.change_pct > 0 ? 'rt-up' : r.change_pct < 0 ? 'rt-down' : 'rt-flat';
+      const chgSign = r.change_pct > 0 ? '+' : '';
+      return `<div class="rt-card">
+        <span class="rt-sym">${r.symbol}</span>
+        <span class="rt-price ${chgClass}">${r.price ? r.price.toLocaleString() : '—'}</span>
+        <span class="rt-chg ${chgClass}">${chgSign}${r.change_pct}%</span>
+        <span class="rt-vol">V:${r.volume ? (r.volume >= 1000 ? (r.volume/1000).toFixed(0)+'K' : r.volume) : '—'} OI:${r.oi ? (r.oi >= 1000 ? (r.oi/1000).toFixed(0)+'K' : r.oi) : '—'}</span>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    console.error("Realtime fetch error:", e);
+  }
 }
 </script>
 </body>

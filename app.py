@@ -108,6 +108,68 @@ def get_kline(
     return records
 
 
+# ===================== REALTIME =====================
+
+# Map variety codes to Chinese names for futures_zh_realtime
+_VARIETY_CN_MAP = {}
+
+def _build_variety_map():
+    global _VARIETY_CN_MAP
+    if _VARIETY_CN_MAP:
+        return
+    try:
+        df = ak.futures_symbol_mark()
+        for _, r in df.iterrows():
+            _VARIETY_CN_MAP[r["symbol"]] = r["symbol"]
+    except:
+        pass
+
+@app.get("/api/realtime")
+def get_realtime(code: str = Query(..., description="Variety Chinese name or code, e.g. 沪铜, 黄金")):
+    """Return real-time quotes for all contracts of a variety."""
+    _build_variety_map()
+    # Try direct Chinese name first, then search the map
+    cn_name = code
+    if not any('\u4e00' <= c <= '\u9fff' for c in code):
+        # English code — look up Chinese name from symbol_mark
+        try:
+            df_map = ak.futures_symbol_mark()
+            for _, r in df_map.iterrows():
+                if code.lower() in r["mark"] or code.lower() == r["symbol"].lower():
+                    cn_name = r["symbol"]
+                    break
+        except:
+            pass
+
+    try:
+        df = ak.futures_zh_realtime(symbol=cn_name)
+        records = []
+        for _, r in df.iterrows():
+            records.append({
+                "symbol": r.get("symbol", ""),
+                "name": r.get("name", ""),
+                "price": float(r["trade"]) if pd.notna(r.get("trade")) else None,
+                "open": float(r["open"]) if pd.notna(r.get("open")) else None,
+                "high": float(r["high"]) if pd.notna(r.get("high")) else None,
+                "low": float(r["low"]) if pd.notna(r.get("low")) else None,
+                "volume": int(r["volume"]) if pd.notna(r.get("volume")) else 0,
+                "oi": int(r["position"]) if pd.notna(r.get("position")) else 0,
+                "settlement": float(r["settlement"]) if pd.notna(r.get("settlement")) else None,
+                "prev_settlement": float(r.get("presettlement") or r.get("prevsettlement", 0)) if pd.notna(r.get("presettlement", r.get("prevsettlement"))) else None,
+            })
+        # Add change % calculation
+        for rec in records:
+            if rec["price"] and rec.get("prev_settlement"):
+                rec["change_pct"] = round((rec["price"] - rec["prev_settlement"]) / rec["prev_settlement"] * 100, 2)
+            elif rec["price"] and rec.get("settlement"):
+                rec["change_pct"] = round((rec["price"] - rec["settlement"]) / rec["settlement"] * 100, 2)
+            else:
+                rec["change_pct"] = 0
+        return records
+    except Exception as e:
+        return {"error": str(e)}
+
+
 # ===================== ANALYZE =====================
 
 def gather_futures_data(variety_code: str) -> dict:
