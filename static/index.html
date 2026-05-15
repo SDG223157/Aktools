@@ -44,7 +44,7 @@
     color: #888;
     white-space: nowrap;
   }
-  select, input[type="date"] {
+  select, input[type="date"], input[type="number"] {
     background: #1a1a28;
     color: #e0e0e0;
     border: 1px solid #2a2a3a;
@@ -58,10 +58,14 @@
   input[type="date"] {
     min-width: 130px;
   }
-  select:hover, input[type="date"]:hover {
+  input[type="number"] {
+    width: 96px;
+    cursor: text;
+  }
+  select:hover, input[type="date"]:hover, input[type="number"]:hover {
     border-color: #ffd700;
   }
-  select:focus, input[type="date"]:focus {
+  select:focus, input[type="date"]:focus, input[type="number"]:focus {
     border-color: #ffd700;
     box-shadow: 0 0 0 1px rgba(255,215,0,0.3);
   }
@@ -235,6 +239,51 @@
   .analysis-panel code { background: #1a1a28; padding: 2px 6px; border-radius: 3px; font-size: 12px; }
   .analysis-panel ul, .analysis-panel ol { padding-left: 20px; margin: 8px 0; }
   .analysis-panel li { margin: 4px 0; }
+  .agent-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 16px; padding-bottom: 14px; border-bottom: 1px solid #2a2a3a;
+  }
+  .agent-head h1 { margin: 0; }
+  .agent-action {
+    font-size: 24px; font-weight: 800; padding: 4px 14px;
+    border-radius: 4px; background: #1a1a28; border: 1px solid #2a2a3a;
+  }
+  .agent-action.long { color: #ef5350; border-color: #ef5350; }
+  .agent-action.short { color: #26a69a; border-color: #26a69a; }
+  .agent-action.wait { color: #ffd700; border-color: #ffd700; }
+  .agent-metrics {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 8px; margin: 16px 0;
+  }
+  .agent-metric {
+    padding: 10px 0; border-bottom: 1px solid #242436;
+  }
+  .agent-metric .label { color: #888; font-size: 11px; text-transform: uppercase; }
+  .agent-metric .value { color: #e0e0e0; font-size: 16px; font-weight: 700; margin-top: 2px; }
+  .agent-section {
+    padding: 16px 0; border-top: 1px solid #242436;
+  }
+  .agent-section h2 { margin-top: 0; }
+  .agent-list { margin: 8px 0 0; padding-left: 18px; }
+  .agent-markdown { color: #d8d8df; font-size: 14px; line-height: 1.75; }
+  .agent-markdown h1, .agent-markdown h2, .agent-markdown h3 {
+    color: #ffd700; margin: 10px 0 6px; border: 0; padding: 0;
+  }
+  .agent-markdown h1 { font-size: 18px; }
+  .agent-markdown h2 { font-size: 16px; }
+  .agent-markdown h3 { font-size: 15px; color: #e0e0e0; }
+  .agent-markdown p { margin: 6px 0; }
+  .agent-markdown ul, .agent-markdown ol { margin: 6px 0; padding-left: 18px; }
+  .agent-markdown blockquote {
+    margin: 8px 0; padding-left: 12px; border-left: 2px solid #ffd70066;
+    color: #b8b8c4;
+  }
+  .level-basis-table td:first-child { width: 110px; color: #ffd700; font-weight: 700; }
+  .agent-json {
+    white-space: pre-wrap; max-height: 360px; overflow: auto;
+    background: #0e0e16; border: 1px solid #2a2a3a; border-radius: 4px;
+    padding: 12px; font-size: 12px;
+  }
   .analysis-close {
     position: sticky; top: 0; text-align: right; padding: 8px 0;
     background: #12121a; z-index: 10;
@@ -263,6 +312,48 @@
   .rt-up { color: #ef5350; }
   .rt-down { color: #26a69a; }
   .rt-flat { color: #888; }
+
+  /* Fade Signal Panel */
+  .fade-panel {
+    display: none;
+    background: #101018;
+    border-bottom: 1px solid #1e1e2e;
+    padding: 8px 16px;
+    gap: 8px;
+    align-items: stretch;
+    overflow-x: auto;
+  }
+  .fade-panel.open { display: flex; }
+  .fade-card {
+    min-width: 230px;
+    background: #151520;
+    border: 1px solid #2a2a3a;
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .fade-card:hover { border-color: #ffd700; background: #191927; }
+  .fade-card .fade-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+  .fade-symbol { color: #ffd700; font-weight: 800; font-size: 13px; }
+  .fade-mode { color: #888; font-size: 11px; }
+  .fade-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    color: #aaa;
+    line-height: 1.55;
+  }
+  .fade-row strong { color: #e0e0e0; font-weight: 700; }
+  .fade-up { color: #ef5350; }
+  .fade-down { color: #26a69a; }
+  .fade-warn { color: #ffb74d; }
 
   /* Legend (MA labels) */
   .legend {
@@ -443,6 +534,16 @@
   <button onclick="analyzeCurrentVariety('orders',event)" style="background:#be185d;color:#fff;border:none;border-radius:4px;padding:6px 10px;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.12s;white-space:nowrap;">Orders</button>
   <button onclick="analyzeCurrentVariety('risk',event)" style="background:#dc2626;color:#fff;border:none;border-radius:4px;padding:6px 10px;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.12s;white-space:nowrap;">Risk</button>
   <button onclick="analyzeCurrentVariety('checklist',event)" style="background:#ea580c;color:#fff;border:none;border-radius:4px;padding:6px 10px;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.12s;white-space:nowrap;">Checklist</button>
+  <button id="agent-btn" onclick="runTradingAgent(event)" style="background:#16a34a;color:#fff;border:none;border-radius:4px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer;transition:all 0.12s;white-space:nowrap;">Agent</button>
+  <button id="fade-btn" onclick="toggleFadePanel(event)" style="background:#f59e0b;color:#0a0a0f;border:none;border-radius:4px;padding:6px 12px;font-size:11px;font-weight:800;cursor:pointer;transition:all 0.12s;white-space:nowrap;">Fade</button>
+  <div class="selector-group">
+    <label>Cash</label>
+    <input type="number" id="agent-cash" value="2000000" min="1" step="10000">
+  </div>
+  <div class="selector-group">
+    <label>Lots</label>
+    <input type="number" id="agent-lots" value="1" min="0" max="10000" step="1">
+  </div>
   <div class="credits">Powered by AKShare</div>
 </div>
 
@@ -456,6 +557,9 @@
 
 <!-- Realtime Quotes Panel -->
 <div class="rt-panel" id="rt-panel"></div>
+
+<!-- Fade Strategy Panel -->
+<div class="fade-panel" id="fade-panel"></div>
 
 <!-- Main: Toolbar + Chart -->
 <div class="main-area">
@@ -587,6 +691,9 @@ let maLines = [
 
 // Period state
 let currentPeriod = "daily";
+let fadePanelOpen = false;
+let fadeSignalInterval = null;
+let fadeSignalMarkers = [];
 
 // Drawing state
 let currentTool = "cursor";
@@ -1160,6 +1267,8 @@ async function loadChart() {
     renderDrawings();
     // Start live candle updates
     startLiveCandle(symbol);
+    await refreshFadeSignals(symbol);
+    if (fadePanelOpen) loadFadeDashboard();
     // Open Live Quotes panel if not already open
     if (!document.getElementById("rt-panel").classList.contains("open")) {
       toggleRealtimePanel();
@@ -1237,6 +1346,9 @@ function startLiveCandle(symbol) {
       // Update info bar
       const varSelect = document.getElementById("variety-select");
       updateInfoBar(bar, liveSymbol, varSelect.options[varSelect.selectedIndex]?.textContent || "");
+      if (fadePanelOpen && currentPeriod === "60") {
+        scheduleFadeRefresh(liveSymbol);
+      }
 
     } catch (e) {
       // Silently fail — next tick will retry
@@ -1276,6 +1388,138 @@ function applyMAVisibility(idx) { const ma = maLines[idx]; if (ma.enabled) { ma.
 function updateLegendItem(idx) { const ma = maLines[idx]; document.querySelector('.ma-item[data-idx="' + idx + '"]').classList.toggle("off", !ma.enabled); document.getElementById("ma" + idx + "-val").textContent = "MA" + ma.period; }
 function updateSingleMA(idx) { const ma = maLines[idx]; if (!rawData.length || !ma.enabled) return; ma.series.setData(calcMA(rawData, ma.period)); }
 function updateAllMA() { maLines.forEach((ma, i) => { if (ma.enabled && rawData.length) ma.series.setData(calcMA(rawData, ma.period)); else ma.series.setData([]); updateLegendItem(i); }); }
+
+// ===================== FADE SIGNALS =====================
+function defaultFadeLookback(symbol) {
+  if (symbol === "AU0") return 6;
+  if (symbol === "IF0") return 5;
+  return 6;
+}
+
+function isFadeSymbol(symbol) {
+  return symbol === "AU0" || symbol === "IF0";
+}
+
+function clearFadeMarkers() {
+  fadeSignalMarkers = [];
+  if (candleSeries) candleSeries.setMarkers([]);
+}
+
+async function refreshFadeSignals(symbol) {
+  if (!symbol || currentPeriod !== "60" || !isFadeSymbol(symbol)) {
+    clearFadeMarkers();
+    return;
+  }
+  const startDate = document.getElementById("start-date").value.replace(/-/g, "");
+  const endDate = document.getElementById("end-date").value.replace(/-/g, "");
+  const lookback = defaultFadeLookback(symbol);
+  try {
+    const res = await fetch(`/api/fade-signals?symbol=${symbol}&period=60&lookback=${lookback}&start_date=${startDate}&end_date=${endDate}`);
+    const data = await res.json();
+    if (!data.ok || !Array.isArray(data.markers)) {
+      clearFadeMarkers();
+      return;
+    }
+    fadeSignalMarkers = data.markers.map(m => ({
+      time: m.time,
+      position: m.position,
+      color: m.color,
+      shape: m.shape,
+      text: m.text,
+    }));
+    candleSeries.setMarkers(fadeSignalMarkers);
+  } catch (e) {
+    clearFadeMarkers();
+  }
+}
+
+function scheduleFadeRefresh(symbol) {
+  if (fadeSignalInterval) return;
+  fadeSignalInterval = setTimeout(async () => {
+    fadeSignalInterval = null;
+    await refreshFadeSignals(symbol);
+    if (fadePanelOpen) loadFadeDashboard();
+  }, 15000);
+}
+
+async function toggleFadePanel(evt) {
+  fadePanelOpen = !fadePanelOpen;
+  document.getElementById("fade-panel").classList.toggle("open", fadePanelOpen);
+  if (evt?.target) evt.target.style.background = fadePanelOpen ? "#ffd700" : "#f59e0b";
+  if (fadePanelOpen) {
+    await loadFadeDashboard();
+    const symbol = document.getElementById("info-symbol")?.dataset?.symbol || "";
+    if (currentPeriod === "60" && isFadeSymbol(symbol)) await refreshFadeSignals(symbol);
+  }
+}
+
+async function loadFadeDashboard() {
+  const panel = document.getElementById("fade-panel");
+  if (!panel.classList.contains("open")) return;
+  const startDate = document.getElementById("start-date").value.replace(/-/g, "");
+  const endDate = document.getElementById("end-date").value.replace(/-/g, "");
+  panel.innerHTML = `<div class="fade-card"><div class="fade-symbol">Loading fade signals...</div></div>`;
+  try {
+    const res = await fetch(`/api/fade-dashboard?start_date=${startDate}&end_date=${endDate}`);
+    const data = await res.json();
+    if (!data.ok || !Array.isArray(data.items)) {
+      panel.innerHTML = `<div class="fade-card"><div class="fade-warn">Fade dashboard unavailable</div></div>`;
+      return;
+    }
+    panel.innerHTML = data.items.map(renderFadeCard).join("");
+  } catch (e) {
+    panel.innerHTML = `<div class="fade-card"><div class="fade-warn">${escapeHtml(e.message || e)}</div></div>`;
+  }
+}
+
+function renderFadeCard(item) {
+  if (item.error) {
+    return `<div class="fade-card"><div class="fade-head"><span class="fade-symbol">${escapeHtml(item.symbol)}</span><span class="fade-warn">error</span></div><div>${escapeHtml(item.error)}</div></div>`;
+  }
+  const latest = item.latest_trade || {};
+  const openPosition = item.open_position || null;
+  const direction = openPosition?.direction || latest.direction || "-";
+  const status = openPosition ? "持仓中" : (latest.exit_reason || "空仓");
+  const entryPrice = openPosition?.entry_price ?? latest.entry_price;
+  const exitPrice = openPosition ? null : latest.exit_price;
+  const ret = Number(item.return_pct || 0) * 100;
+  const dd = Number(item.max_drawdown_pct || 0) * 100;
+  const pf = item.profit_factor == null ? "-" : Number(item.profit_factor).toFixed(2);
+  const cls = direction === "long" ? "fade-up" : direction === "short" ? "fade-down" : "";
+  return `
+    <div class="fade-card" onclick="openFadeSymbol('${escapeHtml(item.symbol)}')">
+      <div class="fade-head">
+        <span class="fade-symbol">${escapeHtml(item.symbol)} N${item.lookback}</span>
+        <span class="fade-mode">fade · 60m</span>
+      </div>
+      <div class="fade-row"><span>Status</span><strong class="${cls}">${escapeHtml(direction)} / ${escapeHtml(status)}</strong></div>
+      <div class="fade-row"><span>Entry</span><strong>${entryPrice ? Number(entryPrice).toFixed(2) : "-"}</strong></div>
+      <div class="fade-row"><span>Exit</span><strong>${exitPrice ? Number(exitPrice).toFixed(2) : "-"}</strong></div>
+      <div class="fade-row"><span>Stop</span><strong>${openPosition?.initial_stop ? Number(openPosition.initial_stop).toFixed(2) : "-"}</strong></div>
+      <div class="fade-row"><span>Return / DD</span><strong>${ret.toFixed(1)}% / ${dd.toFixed(1)}%</strong></div>
+      <div class="fade-row"><span>Trades / PF</span><strong>${item.trades} / ${pf}</strong></div>
+      <div class="fade-row"><span>Last bar</span><strong>${escapeHtml(String(item.last_bar_time || "").slice(5, 16))}</strong></div>
+    </div>`;
+}
+
+function openFadeSymbol(symbol) {
+  const code = symbol.replace(/0$/, "");
+  selectVarietyCode(code, true);
+  currentPeriod = "60";
+  document.querySelectorAll(".period-btn").forEach(b => b.classList.toggle("active", b.dataset.period === "60"));
+  loadChart();
+}
+
+function selectVarietyCode(code, skipLoad = false) {
+  const found = allVarieties.find(v => v.code.toUpperCase() === code.toUpperCase());
+  if (!found) return false;
+  document.getElementById("exchange-select").value = found.exchange;
+  onExchangeChange(false);
+  document.getElementById("variety-select").value = found.code;
+  document.getElementById("search-input").value = found.code.toUpperCase() + " - " + found.name;
+  if (!skipLoad) loadChart();
+  return true;
+}
 
 // ===================== CROSSHAIR / INFO =====================
 function onCrosshairMove(param) {
@@ -1381,6 +1625,226 @@ async function analyzeCurrentVariety(mode = 'analysis', evt) {
     btn.style.background = origBg;
     btn.disabled = false;
   }
+}
+
+async function runTradingAgent(evt) {
+  const code = document.getElementById("variety-select").value;
+  if (!code) { alert("Please select a variety first."); return; }
+
+  const upper = code.toUpperCase();
+  const btn = evt ? evt.target : document.getElementById("agent-btn");
+  const origText = btn.textContent;
+  const origBg = btn.style.background;
+  const cash = Number(document.getElementById("agent-cash").value || 2000000);
+  const targetLots = Math.max(0, Math.floor(Number(document.getElementById("agent-lots").value || 1)));
+
+  btn.textContent = "Running...";
+  btn.style.background = "#555";
+  btn.disabled = true;
+  document.getElementById("analysis-content").innerHTML = `
+    <div style="text-align:center;padding:60px 0;">
+      <div style="width:36px;height:36px;border:3px solid #2a2a3a;border-top-color:#16a34a;border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto;"></div>
+      <p style="color:#888;margin-top:16px;">Running ${upper} official futures TradingAgents graph...</p>
+      <p style="color:#555;font-size:12px;margin-top:8px;">AKShare contract data + GNews/SerpApi + TauricResearch LangGraph runtime.</p>
+    </div>`;
+  document.getElementById("analysis-overlay").classList.add("open");
+
+  try {
+    const params = new URLSearchParams({
+      code: upper,
+      account_size: String(cash),
+      target_lots: String(targetLots),
+      horizon: currentPeriod === "15" || currentPeriod === "30" || currentPeriod === "60" ? "intraday" : "swing",
+      engine: "official",
+    });
+    const res = await fetch(`/api/trading-agent?${params.toString()}`);
+    const result = await res.json();
+    document.getElementById("analysis-content").innerHTML = result.error
+      ? renderAgentError(result.error)
+      : renderAgentReport(result);
+  } catch (err) {
+    document.getElementById("analysis-content").innerHTML = renderAgentError(err.message || err);
+  } finally {
+    btn.textContent = origText;
+    btn.style.background = origBg;
+    btn.disabled = false;
+  }
+}
+
+function renderAgentReport(result) {
+  const reports = result.reports || {};
+  const trader = reports.trader || {};
+  const tradeScore = trader.trade_score || {};
+  const risk = reports.risk_manager || {};
+  const manager = reports.portfolio_manager || {};
+  const news = reports.news_analyst || {};
+  const market = reports.market_analyst || {};
+  const priceStructure = reports.price_structure_analyst || {};
+  const term = reports.term_structure_analyst || {};
+  const bull = reports.bull_researcher || {};
+  const bear = reports.bear_researcher || {};
+  const actionClass = String(result.decision || "WAIT").toLowerCase();
+  const titles = (news.top_titles || []).map(title => `<li>${escapeHtml(title)}</li>`).join("");
+  const engine = result.engine || "china_futures_agent";
+  const framework = result.framework || {};
+  const frameworkText = framework.langgraph
+    ? "TauricResearch LangGraph + futures contract analysis"
+    : "Local futures contract analysis";
+
+  return `
+    <div class="agent-head">
+      <div>
+        <h1>${escapeHtml(result.symbol || result.code || "")} Trading Agent</h1>
+        <div style="color:#888;font-size:13px;">As of ${escapeHtml(result.as_of || "N/A")} · ${escapeHtml(engine)} · Confidence ${formatPct(result.confidence)}</div>
+        <div style="color:#666;font-size:12px;">${escapeHtml(frameworkText)}</div>
+      </div>
+      <div class="agent-action ${actionClass}">${escapeHtml(result.decision || "WAIT")}</div>
+    </div>
+
+    <div class="agent-metrics">
+      ${agentMetric("Score", tradeScore.score)}
+      ${agentMetric("Grade", tradeScore.grade)}
+      ${agentMetric("Entry", trader.entry)}
+      ${agentMetric("Stop", trader.stop)}
+      ${agentMetric("Target 1", trader.target1)}
+      ${agentMetric("Target 2", trader.target2)}
+      ${agentMetric("Conservative R/R", tradeScore.blended_win_loss_ratio)}
+      ${agentMetric("Lots", trader.lots)}
+      ${agentMetric("Multiplier", risk.contract_multiplier)}
+      ${agentMetric("Margin / Lot", risk.margin_per_lot)}
+      ${agentMetric("Per Lot Risk", risk.per_lot_risk)}
+      ${agentMetric("Stop Risk", risk.planned_risk)}
+      ${agentMetric("Margin", risk.estimated_margin)}
+    </div>
+
+    <div class="agent-section">
+      <h2>Portfolio Manager</h2>
+      ${renderAgentMarkdown(manager.summary || "No manager summary.")}
+    </div>
+
+    <div class="agent-section">
+      <h2>Trader</h2>
+      ${renderAgentMarkdown(trader.rationale || "")}
+      <table>
+        <tr><th>Decision</th><th>Horizon</th><th>Executable</th><th>Margin Approved</th></tr>
+        <tr><td>${escapeHtml(trader.decision || "")}</td><td>${escapeHtml(trader.horizon || "")}</td><td>${trader.executable ? "Yes" : "No"}</td><td>${risk.approved ? "Yes" : "No"}</td></tr>
+      </table>
+      ${renderTradeScore(tradeScore)}
+      ${renderLevelBasis(trader.level_basis || {})}
+    </div>
+
+    <div class="agent-section">
+      <h2>Analysts</h2>
+      ${renderLabeledMarkdown("Market", market.summary || "")}
+      ${renderLabeledMarkdown("Price Structure", priceStructure.summary || "")}
+      ${renderLabeledMarkdown("Term Structure", term.summary || "")}
+      ${renderLabeledMarkdown("News", news.summary || "")}
+      ${titles ? `<ul class="agent-list">${titles}</ul>` : ""}
+    </div>
+
+    <div class="agent-section">
+      <h2>Bull / Bear Debate</h2>
+      ${renderLabeledMarkdown("Bull", bull.argument || "")}
+      ${renderLabeledMarkdown("Bear", bear.argument || "")}
+    </div>
+
+    <details class="agent-section">
+      <summary style="cursor:pointer;color:#ffd700;font-weight:700;">Full JSON</summary>
+      <pre class="agent-json">${escapeHtml(JSON.stringify(result, null, 2))}</pre>
+    </details>
+  `;
+}
+
+function renderTradeScore(score) {
+  if (!score || score.score === undefined) return "";
+  return `
+    <h3>Score System</h3>
+    <table>
+      <tr><th>Score</th><th>Grade</th><th>Confidence</th><th>Target 1 R/R</th><th>Target 2 R/R</th><th>Conservative R/R</th><th>Expected Edge</th></tr>
+      <tr>
+        <td>${formatValue(score.score)}</td>
+        <td>${escapeHtml(score.grade || "")}</td>
+        <td>${formatPct(score.confidence)}</td>
+        <td>${formatValue(score.risk_reward_target1)}</td>
+        <td>${formatValue(score.risk_reward_target2)}</td>
+        <td>${formatValue(score.blended_win_loss_ratio)}</td>
+        <td>${formatValue(score.expected_edge)}</td>
+      </tr>
+    </table>
+    ${renderAgentMarkdown(score.summary || "")}
+    <div style="color:#777;font-size:12px;">${escapeHtml(score.formula || "")}</div>`;
+}
+
+function renderLevelBasis(basis) {
+  const rows = [
+    ["Entry", basis.entry],
+    ["Stop", basis.stop],
+    ["Target 1", basis.target1],
+    ["Target 2", basis.target2],
+  ].filter(([, value]) => value);
+
+  if (!rows.length) return "";
+
+  return `
+    <h3>Level Basis</h3>
+    <table class="level-basis-table">
+      ${rows.map(([label, value]) => `
+        <tr>
+          <td>${escapeHtml(label)}</td>
+          <td>${escapeHtml(value)}</td>
+        </tr>`).join("")}
+    </table>`;
+}
+
+function renderLabeledMarkdown(label, value) {
+  return `
+    <div class="agent-markdown-block">
+      <strong>${escapeHtml(label)}:</strong>
+      ${renderAgentMarkdown(value)}
+    </div>`;
+}
+
+function renderAgentMarkdown(value) {
+  const text = String(value || "").trim();
+  if (!text) return `<div class="agent-markdown"></div>`;
+  if (!window.marked) return `<div class="agent-markdown">${escapeHtml(text)}</div>`;
+  return `<div class="agent-markdown">${marked.parse(text)}</div>`;
+}
+
+function agentMetric(label, value) {
+  return `
+    <div class="agent-metric">
+      <div class="label">${escapeHtml(label)}</div>
+      <div class="value">${formatValue(value)}</div>
+    </div>`;
+}
+
+function renderAgentError(error) {
+  return `
+    <div style="color:#ef5350;text-align:center;padding:40px;">
+      <p style="font-size:16px;font-weight:bold;">Trading Agent Failed</p>
+      <p style="margin-top:8px;">${escapeHtml(error)}</p>
+    </div>`;
+}
+
+function formatValue(value) {
+  if (value === null || value === undefined || value === "") return "N/A";
+  if (typeof value === "number") return Number.isInteger(value) ? value.toLocaleString() : value.toFixed(2);
+  return escapeHtml(String(value));
+}
+
+function formatPct(value) {
+  if (typeof value !== "number") return "N/A";
+  return `${Math.round(value * 100)}%`;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 function closeAnalysis() {

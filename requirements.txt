@@ -1,0 +1,7 @@
+akshare>=1.18
+fastapi
+httpx
+numpy
+pandas
+python-dotenv
+uvicorn

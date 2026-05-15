@@ -6,6 +6,8 @@ Open: http://localhost:8888
 
 import os
 import json
+import sys
+from pathlib import Path
 import akshare as ak
 import pandas as pd
 import numpy as np
@@ -15,11 +17,39 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
+from china_futures_agent import (
+    ChinaFuturesTradingAgent,
+    DEFAULT_ACCOUNT_SIZE_RMB,
+    OfficialFuturesTradingAgentsAdapter,
+)
+
 app = FastAPI(title="Futures K-Line")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 OPENAI_MODEL = "gpt-5.4"
 OPENAI_URL = "https://api.openai.com/v1/chat/completions"
+STRATEGY_LAB_ROOT = Path(__file__).resolve().parents[1] / "cnfutures-strategy-lab"
+DEFAULT_LOCAL_DB = STRATEGY_LAB_ROOT.parent / "cnfutures" / "data" / "local_futures_ohlcv.sqlite"
+
+if STRATEGY_LAB_ROOT.exists() and str(STRATEGY_LAB_ROOT) not in sys.path:
+    sys.path.insert(0, str(STRATEGY_LAB_ROOT))
+
+try:
+    from local_futures_data import fetch_local_ohlcv
+except Exception as exc:
+    fetch_local_ohlcv = None
+    print(f"⚠️ Fade signal imports unavailable: {exc}")
+
+
+FADE_DEFAULTS = {
+    "AU0": {"lookback": 6, "label": "AU fade N6"},
+    "IF0": {"lookback": 5, "label": "IF fade N5"},
+}
+
+FADE_CONTRACT_SPECS = {
+    "AU": {"multiplier": 1000.0, "tick_size": 0.02},
+    "IF": {"multiplier": 300.0, "tick_size": 0.2},
+}
 
 
 @app.get("/api/varieties")
@@ -106,6 +136,317 @@ def get_kline(
             "volume": int(row["成交量"]),
         })
     return records
+
+
+def _fade_spec(symbol: str) -> dict:
+    base = symbol[:-1] if symbol.endswith("0") else symbol
+    return FADE_CONTRACT_SPECS.get(base, {"multiplier": 1.0, "tick_size": 1.0})
+
+
+def _recent_atr(data: pd.DataFrame, index: int, period: int = 20) -> float:
+    if index <= 0:
+        return 0.0
+    start = max(1, index - period + 1)
+    ranges = []
+    for i in range(start, index + 1):
+        high = float(data["high"].iloc[i])
+        low = float(data["low"].iloc[i])
+        prev_close = float(data["close"].iloc[i - 1])
+        ranges.append(max(high - low, abs(high - prev_close), abs(low - prev_close)))
+    return float(sum(ranges) / len(ranges)) if ranges else 0.0
+
+
+def _range_filter_ok(data: pd.DataFrame, index: int, lookback: int, direction: int, close: float, stop: float, tick: float) -> bool:
+    atr = _recent_atr(data, index, 20)
+    if atr <= 0:
+        atr = tick
+    start = max(0, index - lookback + 1)
+    channel_width = float(data["high"].iloc[start : index + 1].max() - data["low"].iloc[start : index + 1].min())
+    entry = close + direction * tick
+    risk = abs(entry - stop)
+    return channel_width >= 0.30 * atr and risk >= max(3 * tick, 0.12 * atr)
+
+
+def _position_qty(equity: float, price: float, multiplier: float, leverage: float = 3.0) -> int:
+    notional = price * multiplier
+    return max(0, int((equity * leverage) // notional)) if notional > 0 else 0
+
+
+def _close_trade(position: dict, ts: pd.Timestamp, exit_ref: float, reason: str, spec: dict) -> tuple[dict, float]:
+    direction = position["direction"]
+    exit_price = float(exit_ref) - direction * spec["tick_size"]
+    gross_pnl = (exit_price - position["entry_price"]) * direction * position["qty"] * spec["multiplier"]
+    trade = {
+        "symbol": position["symbol"],
+        "direction": "long" if direction > 0 else "short",
+        "entry_time": position["entry_time"],
+        "exit_time": ts,
+        "entry_price": position["entry_price"],
+        "exit_price": exit_price,
+        "initial_stop": position["stop_price"],
+        "target_price": None,
+        "qty": position["qty"],
+        "gross_pnl": gross_pnl,
+        "costs": 0.0,
+        "net_pnl": gross_pnl,
+        "return_pct": gross_pnl / 2_000_000.0,
+        "hold_hours": (ts - position["entry_time"]).total_seconds() / 3600.0,
+        "exit_reason": reason,
+    }
+    return trade, gross_pnl
+
+
+def _run_fade_signals(symbol: str, bars: pd.DataFrame, lookback: int) -> tuple[pd.DataFrame, pd.DataFrame, dict, dict | None]:
+    spec = _fade_spec(symbol)
+    data = bars.copy().sort_values("datetime").reset_index(drop=True)
+    for column in ["high", "low", "close"]:
+        data[column] = pd.to_numeric(data[column], errors="coerce")
+    data = data.dropna(subset=["datetime", "high", "low", "close"]).reset_index(drop=True)
+    rolling_high = data["close"].rolling(lookback).max()
+    rolling_low = data["close"].rolling(lookback).min()
+    rolling_stop_low = data["low"].rolling(lookback).min()
+    rolling_stop_high = data["high"].rolling(lookback).max()
+    cash = 2_000_000.0
+    position = None
+    trades = []
+    equity_rows = []
+
+    for index, row in data.iterrows():
+        ts = pd.Timestamp(row["datetime"])
+        high = float(row["high"])
+        low = float(row["low"])
+        close = float(row["close"])
+        if position is not None and ts > position["entry_time"]:
+            if position["direction"] > 0 and low <= position["stop_price"]:
+                trade, pnl = _close_trade(position, ts, position["stop_price"], "initial_stop", spec)
+                trades.append(trade)
+                cash += pnl
+                position = None
+            elif position["direction"] < 0 and high >= position["stop_price"]:
+                trade, pnl = _close_trade(position, ts, position["stop_price"], "initial_stop", spec)
+                trades.append(trade)
+                cash += pnl
+                position = None
+
+        high_signal = index >= lookback - 1 and close >= float(rolling_high.iloc[index])
+        low_signal = index >= lookback - 1 and close <= float(rolling_low.iloc[index])
+        if high_signal and low_signal:
+            high_signal = low_signal = False
+        long_signal = low_signal
+        short_signal = high_signal
+
+        if long_signal:
+            if position is not None and position["direction"] < 0:
+                trade, pnl = _close_trade(position, ts, close, "reverse_to_long", spec)
+                trades.append(trade)
+                cash += pnl
+                position = None
+            elif position is None:
+                stop = float(rolling_stop_low.iloc[index])
+                if _range_filter_ok(data, index, lookback, 1, close, stop, spec["tick_size"]):
+                    qty = _position_qty(cash, close, spec["multiplier"], 3.0)
+                    if qty > 0:
+                        position = {
+                            "symbol": symbol,
+                            "direction": 1,
+                            "entry_time": ts,
+                            "entry_price": close + spec["tick_size"],
+                            "stop_price": stop,
+                            "qty": qty,
+                        }
+        elif short_signal:
+            if position is not None and position["direction"] > 0:
+                trade, pnl = _close_trade(position, ts, close, "reverse_to_short", spec)
+                trades.append(trade)
+                cash += pnl
+                position = None
+            elif position is None:
+                stop = float(rolling_stop_high.iloc[index])
+                if _range_filter_ok(data, index, lookback, -1, close, stop, spec["tick_size"]):
+                    qty = _position_qty(cash, close, spec["multiplier"], 3.0)
+                    if qty > 0:
+                        position = {
+                            "symbol": symbol,
+                            "direction": -1,
+                            "entry_time": ts,
+                            "entry_price": close - spec["tick_size"],
+                            "stop_price": stop,
+                            "qty": qty,
+                        }
+
+        unrealized = 0.0
+        if position is not None:
+            unrealized = (close - position["entry_price"]) * position["direction"] * position["qty"] * spec["multiplier"]
+        equity = cash + unrealized
+        equity_rows.append({"datetime": ts, "equity": equity})
+
+    trades_frame = pd.DataFrame(trades)
+    equity_frame = pd.DataFrame(equity_rows)
+    if not equity_frame.empty:
+        equity_frame["peak"] = equity_frame["equity"].cummax()
+        equity_frame["drawdown_pct"] = equity_frame["equity"] / equity_frame["peak"] - 1.0
+    wins = trades_frame[trades_frame["net_pnl"] > 0] if not trades_frame.empty else pd.DataFrame()
+    losses = trades_frame[trades_frame["net_pnl"] < 0] if not trades_frame.empty else pd.DataFrame()
+    gross_profit = float(wins["net_pnl"].sum()) if not wins.empty else 0.0
+    gross_loss = abs(float(losses["net_pnl"].sum())) if not losses.empty else 0.0
+    final_equity = float(equity_frame["equity"].iloc[-1]) if not equity_frame.empty else 2_000_000.0
+    summary = {
+        "return_pct": final_equity / 2_000_000.0 - 1.0,
+        "max_drawdown_pct": float(equity_frame["drawdown_pct"].min()) if not equity_frame.empty else 0.0,
+        "trades": len(trades_frame),
+        "win_rate": len(wins) / len(trades_frame) if len(trades_frame) else pd.NA,
+        "profit_factor": gross_profit / gross_loss if gross_loss > 0 else pd.NA,
+    }
+    return trades_frame, equity_frame, summary, position
+
+
+def _marker_time(value):
+    return int(pd.Timestamp(value).timestamp())
+
+
+def _json_safe(value):
+    if value is None:
+        return None
+    if value is pd.NA:
+        return None
+    if isinstance(value, pd.Timestamp):
+        return value.isoformat()
+    if isinstance(value, np.integer):
+        return int(value)
+    if isinstance(value, np.floating):
+        return float(value)
+    if isinstance(value, float) and pd.isna(value):
+        return None
+    return value
+
+
+def _trade_record(row: pd.Series | None) -> dict | None:
+    if row is None:
+        return None
+    return {key: _json_safe(value) for key, value in row.to_dict().items()}
+
+
+def _position_record(position: dict | None, last_close: float | None = None) -> dict | None:
+    if position is None:
+        return None
+    row = {
+        "symbol": position["symbol"],
+        "direction": "long" if position["direction"] > 0 else "short",
+        "entry_time": position["entry_time"],
+        "entry_price": position["entry_price"],
+        "initial_stop": position["stop_price"],
+        "qty": position["qty"],
+    }
+    if last_close is not None:
+        row["unrealized_pnl"] = (float(last_close) - position["entry_price"]) * position["direction"] * position["qty"] * _fade_spec(position["symbol"])["multiplier"]
+    return {key: _json_safe(value) for key, value in row.items()}
+
+
+def _trade_markers(trades: pd.DataFrame) -> list[dict]:
+    markers = []
+    if trades.empty:
+        return markers
+    for _, trade in trades.iterrows():
+        is_long = trade["direction"] == "long"
+        entry_time = _marker_time(trade["entry_time"])
+        exit_time = _marker_time(trade["exit_time"])
+        reason = str(trade.get("exit_reason", "exit"))
+        entry_text = "开多" if is_long else "开空"
+        exit_text = "止损" if reason == "initial_stop" else "平仓"
+        if reason.startswith("reverse_to"):
+            exit_text = "反向平"
+        markers.append({
+            "time": entry_time,
+            "position": "belowBar" if is_long else "aboveBar",
+            "shape": "arrowUp" if is_long else "arrowDown",
+            "color": "#ef5350" if is_long else "#26a69a",
+            "text": f"{entry_text} {float(trade['entry_price']):.2f}",
+            "kind": "entry",
+        })
+        markers.append({
+            "time": exit_time,
+            "position": "aboveBar" if is_long else "belowBar",
+            "shape": "circle",
+            "color": "#ffd700" if reason != "initial_stop" else "#ff7043",
+            "text": f"{exit_text} {float(trade['exit_price']):.2f}",
+            "kind": "exit",
+        })
+    markers.sort(key=lambda item: item["time"])
+    return markers
+
+
+def _latest_signal(symbol: str, lookback: int, bars: pd.DataFrame, trades: pd.DataFrame, summary: dict, position: dict | None) -> dict:
+    latest_trade = _trade_record(trades.iloc[-1]) if not trades.empty else None
+    last_close = float(bars["close"].iloc[-1]) if not bars.empty else None
+    open_position = _position_record(position, last_close)
+    last_bar_time = str(pd.Timestamp(bars["datetime"].iloc[-1])) if not bars.empty else ""
+    return {
+        "symbol": symbol,
+        "mode": "fade",
+        "lookback": lookback,
+        "bars": int(len(bars)),
+        "last_bar_time": last_bar_time,
+        "return_pct": float(summary.get("return_pct", 0.0)),
+        "max_drawdown_pct": float(summary.get("max_drawdown_pct", 0.0)),
+        "trades": int(summary.get("trades", 0)),
+        "win_rate": None if pd.isna(summary.get("win_rate")) else float(summary.get("win_rate")),
+        "profit_factor": None if pd.isna(summary.get("profit_factor")) else float(summary.get("profit_factor")),
+        "latest_trade": latest_trade,
+        "open_position": open_position,
+    }
+
+
+@app.get("/api/fade-signals")
+def get_fade_signals(
+    symbol: str = Query("AU0"),
+    start_date: str = Query("20240101"),
+    end_date: str = Query("20261231"),
+    lookback: int | None = Query(None),
+    period: str = Query("60"),
+):
+    """Return AU/IF fade strategy markers using the local strategy-lab backtest logic."""
+    if fetch_local_ohlcv is None:
+        return {"error": "Fade strategy modules are unavailable. Check cnfutures-strategy-lab imports."}
+    symbol = symbol.upper()
+    if period != "60":
+        return {"error": "Fade signal overlay currently supports 60-minute bars only."}
+    resolved_lookback = int(lookback or FADE_DEFAULTS.get(symbol, {}).get("lookback", 6))
+    try:
+        os.environ.setdefault("LOCAL_FUTURES_DB", str(DEFAULT_LOCAL_DB))
+        bars = fetch_local_ohlcv(symbol, "60", start_date, end_date)
+        if bars.empty:
+            return {"error": f"No local 60m bars for {symbol} {start_date}->{end_date}."}
+        bars = bars.copy()
+        bars["datetime"] = pd.to_datetime(bars["datetime"])
+        bars = bars.sort_values("datetime").reset_index(drop=True)
+        trades, equity, summary, position = _run_fade_signals(symbol, bars, resolved_lookback)
+        return {
+            "ok": True,
+            "symbol": symbol,
+            "label": FADE_DEFAULTS.get(symbol, {}).get("label", f"{symbol} fade N{resolved_lookback}"),
+            "period": "60",
+            "lookback": resolved_lookback,
+            "markers": _trade_markers(trades),
+            "summary": _latest_signal(symbol, resolved_lookback, bars, trades, summary, position),
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+@app.get("/api/fade-dashboard")
+def get_fade_dashboard(
+    start_date: str = Query("20240101"),
+    end_date: str = Query("20261231"),
+):
+    """Return compact latest fade state for AU0 and IF0."""
+    rows = []
+    for symbol, defaults in FADE_DEFAULTS.items():
+        result = get_fade_signals(symbol=symbol, start_date=start_date, end_date=end_date, lookback=defaults["lookback"], period="60")
+        if isinstance(result, dict) and result.get("ok"):
+            rows.append(result["summary"])
+        else:
+            rows.append({"symbol": symbol, "error": result.get("error", "unknown error") if isinstance(result, dict) else "unknown error"})
+    return {"ok": True, "items": rows}
 
 
 # ===================== REALTIME =====================
@@ -495,6 +836,62 @@ async def analyze_futures(code: str = Query(...), mode: str = Query("analysis"))
             return {"ok": True, "code": upper, "mode": mode, "report": report}
         except Exception as e:
             return {"error": str(e)}
+
+
+@app.get("/api/trading-agent")
+def run_trading_agent(
+    code: str = Query(..., description="Futures variety code, e.g. CU, AU, RB, I"),
+    account_size: float = Query(DEFAULT_ACCOUNT_SIZE_RMB, gt=0),
+    risk_pct: float = Query(0.005, gt=0, le=0.05),
+    horizon: str = Query("swing", description="intraday, swing, position"),
+    llm: bool = Query(False, description="Use OpenAI to synthesize the final memo"),
+    engine: str = Query("official", description="official or lite"),
+    target_lots: int = Query(1, ge=0, le=10000, description="Number of futures contracts to open"),
+):
+    """Run a paper-style multi-agent trading workflow for China futures."""
+    try:
+        if engine.lower() == "lite":
+            return ChinaFuturesTradingAgent().run(
+                code,
+                account_size=account_size,
+                risk_pct=risk_pct,
+                horizon=horizon,
+                use_llm=llm,
+                target_lots=target_lots,
+            )
+
+        return OfficialFuturesTradingAgentsAdapter().run(
+            code,
+            account_size=account_size,
+            risk_pct=risk_pct,
+            horizon=horizon,
+            target_lots=target_lots,
+        )
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/trading-agent-lite")
+def run_trading_agent_lite(
+    code: str = Query(..., description="Futures variety code, e.g. CU, AU, RB, I"),
+    account_size: float = Query(DEFAULT_ACCOUNT_SIZE_RMB, gt=0),
+    risk_pct: float = Query(0.005, gt=0, le=0.05),
+    horizon: str = Query("swing", description="intraday, swing, position"),
+    llm: bool = Query(False, description="Use OpenAI to synthesize the final memo"),
+    target_lots: int = Query(1, ge=0, le=10000, description="Number of futures contracts to open"),
+):
+    """Run the fast local futures trading workflow without the official graph."""
+    try:
+        return ChinaFuturesTradingAgent().run(
+            code,
+            account_size=account_size,
+            risk_pct=risk_pct,
+            horizon=horizon,
+            use_llm=llm,
+            target_lots=target_lots,
+        )
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @app.get("/", response_class=HTMLResponse)
