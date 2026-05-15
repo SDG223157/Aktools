@@ -162,8 +162,7 @@ def _range_filter_ok(data: pd.DataFrame, index: int, lookback: int, direction: i
         atr = tick
     start = max(0, index - lookback + 1)
     channel_width = float(data["high"].iloc[start : index + 1].max() - data["low"].iloc[start : index + 1].min())
-    entry = close + direction * tick
-    risk = abs(entry - stop)
+    risk = abs(close - stop)
     return channel_width >= 0.30 * atr and risk >= max(3 * tick, 0.12 * atr)
 
 
@@ -174,7 +173,7 @@ def _position_qty(equity: float, price: float, multiplier: float, leverage: floa
 
 def _close_trade(position: dict, ts: pd.Timestamp, exit_ref: float, reason: str, spec: dict) -> tuple[dict, float]:
     direction = position["direction"]
-    exit_price = float(exit_ref) - direction * spec["tick_size"]
+    exit_price = float(exit_ref)
     gross_pnl = (exit_price - position["entry_price"]) * direction * position["qty"] * spec["multiplier"]
     trade = {
         "symbol": position["symbol"],
@@ -250,7 +249,7 @@ def _run_fade_signals(symbol: str, bars: pd.DataFrame, lookback: int) -> tuple[p
                             "symbol": symbol,
                             "direction": 1,
                             "entry_time": ts,
-                            "entry_price": close + spec["tick_size"],
+                            "entry_price": close,
                             "stop_price": stop,
                             "qty": qty,
                         }
@@ -269,7 +268,7 @@ def _run_fade_signals(symbol: str, bars: pd.DataFrame, lookback: int) -> tuple[p
                             "symbol": symbol,
                             "direction": -1,
                             "entry_time": ts,
-                            "entry_price": close - spec["tick_size"],
+                            "entry_price": close,
                             "stop_price": stop,
                             "qty": qty,
                         }
